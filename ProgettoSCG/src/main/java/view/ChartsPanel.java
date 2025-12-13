@@ -10,34 +10,65 @@ public class ChartsPanel extends JPanel {
 
     private final ChartPanel posChartPanel;
     private final ChartPanel compChartPanel;
-    private final ChartPanel ceChartPanel;
+
+    // CE separati
+    private final ChartPanel ceBaseChartPanel;
+    private final ChartPanel ceVarChartPanel;
+
+    // CE Delta
+    private final ChartPanel ceDeltaChartPanel;
 
     public ChartsPanel() {
-        setLayout(new GridLayout(3, 1, 0, 8));
+        setLayout(new BorderLayout());
+
+        JPanel content = new JPanel();
+        content.setLayout(new GridLayout(5, 1, 0, 8));
 
         posChartPanel = new ChartPanel(null, false);
         compChartPanel = new ChartPanel(null, false);
-        ceChartPanel   = new ChartPanel(null, false);
 
-        posChartPanel.setPreferredSize(new Dimension(1000, 260));
-        compChartPanel.setPreferredSize(new Dimension(1000, 260));
-        ceChartPanel.setPreferredSize(new Dimension(1000, 260));
+        ceBaseChartPanel = new ChartPanel(null, false);
+        ceVarChartPanel  = new ChartPanel(null, false);
+        ceDeltaChartPanel = new ChartPanel(null, false);
+
+        // Dimensioni coerenti con la tua UI
+        Dimension pref = new Dimension(1000, 260);
+
+        posChartPanel.setPreferredSize(pref);
+        compChartPanel.setPreferredSize(pref);
+        ceBaseChartPanel.setPreferredSize(pref);
+        ceVarChartPanel.setPreferredSize(pref);
+        ceDeltaChartPanel.setPreferredSize(pref);
 
         posChartPanel.setMouseWheelEnabled(true);
         compChartPanel.setMouseWheelEnabled(true);
-        ceChartPanel.setMouseWheelEnabled(true);
+        ceBaseChartPanel.setMouseWheelEnabled(true);
+        ceVarChartPanel.setMouseWheelEnabled(true);
+        ceDeltaChartPanel.setMouseWheelEnabled(true);
 
         // evita casi in cui ChartPanel decide di non disegnare perché “troppo piccolo”
-        posChartPanel.setMinimumDrawWidth(0);
-        posChartPanel.setMinimumDrawHeight(0);
-        compChartPanel.setMinimumDrawWidth(0);
-        compChartPanel.setMinimumDrawHeight(0);
-        ceChartPanel.setMinimumDrawWidth(0);
-        ceChartPanel.setMinimumDrawHeight(0);
+        setMinDraw(posChartPanel);
+        setMinDraw(compChartPanel);
+        setMinDraw(ceBaseChartPanel);
+        setMinDraw(ceVarChartPanel);
+        setMinDraw(ceDeltaChartPanel);
 
-        add(posChartPanel);
-        add(compChartPanel);
-        add(ceChartPanel);
+        content.add(posChartPanel);
+        content.add(compChartPanel);
+        content.add(ceBaseChartPanel);
+        content.add(ceVarChartPanel);
+        content.add(ceDeltaChartPanel);
+
+        JScrollPane scroll = new JScrollPane(content);
+        scroll.setBorder(null);
+        scroll.getVerticalScrollBar().setUnitIncrement(16);
+
+        add(scroll, BorderLayout.CENTER);
+    }
+
+    private void setMinDraw(ChartPanel p) {
+        p.setMinimumDrawWidth(0);
+        p.setMinimumDrawHeight(0);
     }
 
     public void setPosChart(JFreeChart chart) {
@@ -45,8 +76,6 @@ public class ChartsPanel extends JPanel {
             posChartPanel.setChart(chart);
             posChartPanel.revalidate();
             posChartPanel.repaint();
-            this.revalidate();
-            this.repaint();
         });
     }
 
@@ -55,18 +84,30 @@ public class ChartsPanel extends JPanel {
             compChartPanel.setChart(chart);
             compChartPanel.revalidate();
             compChartPanel.repaint();
-            this.revalidate();
-            this.repaint();
         });
     }
 
-    public void setCeChart(JFreeChart chart) {
+    public void setCeBaseChart(JFreeChart chart) {
         SwingUtilities.invokeLater(() -> {
-            ceChartPanel.setChart(chart);
-            ceChartPanel.revalidate();
-            ceChartPanel.repaint();
-            this.revalidate();
-            this.repaint();
+            ceBaseChartPanel.setChart(chart);
+            ceBaseChartPanel.revalidate();
+            ceBaseChartPanel.repaint();
+        });
+    }
+
+    public void setCeVarChart(JFreeChart chart) {
+        SwingUtilities.invokeLater(() -> {
+            ceVarChartPanel.setChart(chart);
+            ceVarChartPanel.revalidate();
+            ceVarChartPanel.repaint();
+        });
+    }
+
+    public void setCeDeltaChart(JFreeChart chart) {
+        SwingUtilities.invokeLater(() -> {
+            ceDeltaChartPanel.setChart(chart);
+            ceDeltaChartPanel.revalidate();
+            ceDeltaChartPanel.repaint();
         });
     }
 }

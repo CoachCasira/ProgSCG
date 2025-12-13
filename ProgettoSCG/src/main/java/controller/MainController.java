@@ -180,7 +180,7 @@ public class MainController {
             Map<String, Double> ceBase = readCeBudgetSnapshot(wb, eval);
 
             // =========================================================
-            // 1) Trovo header tabella destra e colonne chiave
+            // 1) Trovo header tabella destra e colonne chiave (CODICE INVARIATO)
             // =========================================================
             int headerRowIdx = -1;
             for (int r = 0; r <= Math.min(ricaviSheet.getLastRowNum(), 200); r++) {
@@ -274,12 +274,12 @@ public class MainController {
             if (!foundTable) {
                 throw new IllegalStateException(
                         "Impossibile identificare le colonne necessarie nella tabella destra.\n" +
-                        "Servono: Cat, Articolo, Quantità, P medio (€/kg), CMP medio (€/kg), POS."
+                                "Servono: Cat, Articolo, Quantità, P medio (€/kg), CMP medio (€/kg), POS."
                 );
             }
 
             // =========================================================
-            // 2) Trovo la riga corretta per Cat/Articolo
+            // 2) Trovo la riga corretta per Cat/Articolo (CODICE INVARIATO)
             // =========================================================
             String targetCat = (ar.getCat() == null) ? "" : ar.getCat().trim().toUpperCase();
             String targetArt = (ar.getArticolo() == null) ? "" : ar.getArticolo().trim().toUpperCase();
@@ -305,7 +305,7 @@ public class MainController {
             }
 
             // =========================================================
-            // 3) Leggo valori base (EUR) + POS Excel
+            // 3) Leggo valori base (EUR) + POS Excel (CODICE INVARIATO)
             // =========================================================
             eval.evaluateAll();
 
@@ -323,7 +323,7 @@ public class MainController {
             double pos0Calc = fatt0 - cogs0;
 
             // =========================================================
-            // 4) Step 1: applico variazione (questa deve riflettersi nel CE)
+            // 4) Step 1: applico variazione (CODICE INVARIATO)
             // =========================================================
             ricaviService.writeNumeric(ricaviSheet, rowIdx, colQty, q0);
             ricaviService.writeNumeric(ricaviSheet, rowIdx, colPeur, p0);
@@ -348,13 +348,12 @@ public class MainController {
             double pos1Calc = fatt1 - cogs1;
 
             // =========================================================
-            // 4B) Snapshot CE "DOPO VARIAZIONE" (prima della compensazione)
-            //     -> così il grafico CE mostra davvero la differenza
+            // 4B) CE dopo variazione (FIX): calcolato, non riletto da Excel
             // =========================================================
-            Map<String, Double> ceAfterVar = readCeBudgetSnapshot(wb, eval);
+            Map<String, Double> ceAfterVar = computeCeAfterVar(ceBase, targetCat, fatt0, fatt1, cogs0, cogs1);
 
             // =========================================================
-            // 5) Step 2: compensazione per mantenere POS(calc) costante
+            // 5) Step 2: compensazione per mantenere POS(calc) costante (CODICE INVARIATO)
             // =========================================================
             double compValue;
             String compensatedVarLabel;
@@ -392,7 +391,7 @@ public class MainController {
             double posStarCalc = fattStar - cogsStar;
 
             // =========================================================
-            // 6) Dettagli
+            // 6) Dettagli (CODICE INVARIATO)
             // =========================================================
             String whatChanged = (mode == SimulationMode.QUANTITY) ? "Quantità (kg)" : "Prezzo (€/kg)";
             String unitPrice = "€/kg";
@@ -439,7 +438,7 @@ public class MainController {
             view.getControlsPanel().setDetails(sb.toString());
 
             // =========================================================
-            // 7) Grafici esistenti (POS + Comp)
+            // 7) Grafici esistenti (POS + Comp) (CODICE INVARIATO)
             // =========================================================
             DefaultCategoryDataset posDS = new DefaultCategoryDataset();
             DefaultCategoryDataset compDS = new DefaultCategoryDataset();
@@ -490,39 +489,70 @@ public class MainController {
             view.getChartsPanel().setPosChart(posChart);
             view.getChartsPanel().setCompChart(compChart);
 
+         // =========================================================
+         // 8) CE: tre grafici separati (BASE, DOPO VAR, DELTA)
+         // =========================================================
+         List<String> keysOrdered = Arrays.asList(
+                 K_RICAVI_PF,
+                 K_RICAVI_MP,
+                 K_RICAVI_CLAV,
+                 K_ALTRI_RICAVI,
+                 K_VAR_PF,
+                 K_ACQUISTO_MP,
+                 K_VAR_SCORTE
+         );
+
+         // --- CE BASE (solo budget base)
+         DefaultCategoryDataset ceBaseDS = new DefaultCategoryDataset();
+         for (String k : keysOrdered) {
+             String catLabel = prettifyCeKey(k);
+             ceBaseDS.addValue(ceBase.getOrDefault(k, 0.0), "Budget base", catLabel);
+         }
+         JFreeChart ceBaseChart = ChartFactory.createLineChart(
+                 "CE Budget 2022 – Valori (Budget base)",
+                 "Voce",
+                 "Valore",
+                 ceBaseDS
+         );
+         configureCategoryChart(ceBaseChart, true);
+         view.getChartsPanel().setCeBaseChart(ceBaseChart);
+
+         // --- CE DOPO VARIAZIONE (solo dopo-var)
+         DefaultCategoryDataset ceVarDS = new DefaultCategoryDataset();
+         for (String k : keysOrdered) {
+             String catLabel = prettifyCeKey(k);
+             ceVarDS.addValue(ceAfterVar.getOrDefault(k, 0.0), "Dopo variazione", catLabel);
+         }
+         JFreeChart ceVarChart = ChartFactory.createLineChart(
+                 "CE Budget 2022 – Valori (Dopo variazione)",
+                 "Voce",
+                 "Valore",
+                 ceVarDS
+         );
+         configureCategoryChart(ceVarChart, true);
+         view.getChartsPanel().setCeVarChart(ceVarChart);
+
+         // --- CE DELTA (dopo - base) -> qui la variazione si VEDE sempre
+         DefaultCategoryDataset ceDeltaDS = new DefaultCategoryDataset();
+         for (String k : keysOrdered) {
+             String catLabel = prettifyCeKey(k);
+             double baseV = ceBase.getOrDefault(k, 0.0);
+             double varV  = ceAfterVar.getOrDefault(k, 0.0);
+             ceDeltaDS.addValue(varV - baseV, "Δ (Dopo - Base)", catLabel);
+         }
+         JFreeChart ceDeltaChart = ChartFactory.createLineChart(
+                 "CE Budget 2022 – Variazioni (Δ)",
+                 "Voce",
+                 "Δ Valore",
+                 ceDeltaDS
+         );
+         // qui NON voglio formato intero “sempre”, perché i delta possono essere piccoli
+         configureCategoryChart(ceDeltaChart, true);
+         view.getChartsPanel().setCeDeltaChart(ceDeltaChart);
+
+
             // =========================================================
-            // 8) Grafico CE: Budget base (rosso) vs Dopo variazione (blu)
-            //    -> lettura SOLO dal CE Budget 2022 colonna J
-            // =========================================================
-            DefaultCategoryDataset ceDS = new DefaultCategoryDataset();
-
-            List<String> keysOrdered = Arrays.asList(
-                    K_RICAVI_PF,
-                    K_RICAVI_MP,
-                    K_RICAVI_CLAV,
-                    K_ALTRI_RICAVI,
-                    K_VAR_PF,
-                    K_ACQUISTO_MP,
-                    K_VAR_SCORTE
-            );
-
-            for (String k : keysOrdered) {
-                String catLabel = prettifyCeKey(k);
-                ceDS.addValue(ceBase.getOrDefault(k, 0.0), "Budget base", catLabel);
-                ceDS.addValue(ceAfterVar.getOrDefault(k, 0.0), "Dopo variazione", catLabel);
-            }
-
-            JFreeChart ceChart = ChartFactory.createLineChart(
-                    "CE Budget 2022 – Voci impattate",
-                    "Voce",
-                    "Valore",
-                    ceDS
-            );
-            configureCategoryChart(ceChart, true);
-            view.getChartsPanel().setCeChart(ceChart);
-
-            // =========================================================
-            // 9) Salvo
+            // 9) Salvo (CODICE INVARIATO)
             // =========================================================
             excelRepo.safeSaveWorkbook(wb);
 
@@ -555,7 +585,7 @@ public class MainController {
     }
 
     // ===========================
-    // CE Budget 2022 reading: SOLO colonna J
+    // CE Budget 2022 reading: SOLO colonna J (CODICE INVARIATO)
     // ===========================
     private Map<String, Double> readCeBudgetSnapshot(Workbook wb, FormulaEvaluator eval) {
         Sheet ce = findCeBudgetSheet(wb);
@@ -623,14 +653,12 @@ public class MainController {
             if (s != null) return s;
         }
 
-        // 2) Debug: stampa nomi fogli (così vedi subito come si chiamano davvero)
+        // 2) Debug: stampa nomi fogli
         for (int i = 0; i < wb.getNumberOfSheets(); i++) {
             log.info("Workbook sheet[{}] name='{}'", i, wb.getSheetName(i));
         }
 
-        // 3) Ricerca robusta per CONTENUTO:
-        //    cerco un foglio che nelle prime righe contenga "CE" + "BUDGET" + "2022"
-        //    (quindi indipendente dal nome del foglio)
+        // 3) Ricerca per contenuto
         DataFormatter fmt = new DataFormatter();
         for (int i = 0; i < wb.getNumberOfSheets(); i++) {
             Sheet s = wb.getSheetAt(i);
@@ -644,7 +672,6 @@ public class MainController {
     }
 
     private boolean sheetLooksLikeCeBudget2022(Sheet s, DataFormatter fmt) {
-        // scansiono una finestra piccola (prime righe/colonne) per non essere lento
         int maxRows = Math.min(s.getLastRowNum(), 40);
         int maxCols = 25;
 
@@ -657,10 +684,8 @@ public class MainController {
                 String txt = fmt.formatCellValue(row.getCell(c)).trim().toUpperCase();
                 if (txt.isEmpty()) continue;
 
-                // normalizzo spazi
                 String norm = txt.replaceAll("\\s+", " ");
 
-                // match elastico: "CE BUDGET 2022" oppure "CE BUDGET2022"
                 boolean hasCE = norm.contains("CE");
                 boolean hasBUDGET = norm.contains("BUDGET");
                 boolean has2022 = norm.contains("2022");
@@ -671,7 +696,6 @@ public class MainController {
         return false;
     }
 
-
     private String prettifyCeKey(String k) {
         if (K_RICAVI_PF.equals(k))    return "Ricavi PF";
         if (K_RICAVI_MP.equals(k))    return "Ricavi MP";
@@ -681,6 +705,37 @@ public class MainController {
         if (K_ACQUISTO_MP.equals(k))  return "Acquisto MP";
         if (K_VAR_SCORTE.equals(k))   return "Var. scorte";
         return k;
+    }
+
+    // ===========================
+    // FIX: CE "Dopo variazione" calcolato (non dipende dal foglio CE)
+    // ===========================
+    private Map<String, Double> computeCeAfterVar(
+            Map<String, Double> ceBase,
+            String targetCat,
+            double fatt0, double fatt1,
+            double cogs0, double cogs1
+    ) {
+        Map<String, Double> out = new HashMap<>(ceBase);
+
+        double dRicavi = fatt1 - fatt0;
+        double dCosti  = cogs1 - cogs0;
+
+        String cat = (targetCat == null) ? "" : targetCat.trim().toUpperCase();
+
+        // Regola semplice e coerente col tuo caso MP1 (MP):
+        // - se è MP -> impatta Ricavi MP e Acquisto MP
+        // - altrimenti -> impatta Ricavi PF
+        if (cat.contains("MP")) {
+            out.put(K_RICAVI_MP,   ceBase.getOrDefault(K_RICAVI_MP, 0.0) + dRicavi);
+            out.put(K_ACQUISTO_MP, ceBase.getOrDefault(K_ACQUISTO_MP, 0.0) - dCosti);
+
+        } else {
+            out.put(K_RICAVI_PF, ceBase.getOrDefault(K_RICAVI_PF, 0.0) + dRicavi);
+        }
+
+        log.info("CE calc afterVar: cat='{}' dRicavi={} dCosti={}", cat, dRicavi, dCosti);
+        return out;
     }
 
     private void onExit() {
