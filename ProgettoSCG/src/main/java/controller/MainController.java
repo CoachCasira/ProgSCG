@@ -15,6 +15,7 @@ import org.jfree.chart.JFreeChart;
 import org.jfree.chart.axis.ValueAxis;
 import org.jfree.chart.labels.StandardCategoryItemLabelGenerator;
 import org.jfree.chart.plot.CategoryPlot;
+import org.jfree.chart.plot.PlotOrientation;
 import org.jfree.chart.renderer.category.LineAndShapeRenderer;
 import org.jfree.data.category.DefaultCategoryDataset;
 
@@ -48,18 +49,14 @@ public class MainController {
     // ===========================
     private static final int CE_COL_J = 9; // J = index 9 (0-based)
 
-    // righe Excel -> index POI (0-based): riga 5 => 4
     private static final int CE_ROW_RICAVI_PF      = 4;  // J5
     private static final int CE_ROW_RICAVI_MP      = 5;  // J6
     private static final int CE_ROW_RICAVI_CLAV    = 6;  // J7
     private static final int CE_ROW_ALTRI_RICAVI   = 7;  // J8
     private static final int CE_ROW_VAR_PF         = 8;  // J9
-    // J10 totale ricavi produzione (non lo plottiamo)
     private static final int CE_ROW_ACQUISTO_MP    = 10; // J11
     private static final int CE_ROW_VAR_SCORTE     = 11; // J12
-    // J13 totale costi materie prime (non lo plottiamo)
 
-    // chiavi logiche delle voci che plottiamo
     private static final String K_RICAVI_PF    = "RICAVI_PF";
     private static final String K_RICAVI_MP    = "RICAVI_MP";
     private static final String K_RICAVI_CLAV  = "RICAVI_CLAV";
@@ -82,6 +79,10 @@ public class MainController {
         view.getBtnExit().addActionListener(e -> onExit());
         view.getBtnOpenWorkingCopy().addActionListener(e -> onOpenWorkingCopy());
         view.getControlsPanel().getBtnSimulate().addActionListener(e -> onSimulate());
+
+        // ✅ nuovo listener: CE Budget 2022 (base fisso)
+        view.getBtnShowCeBudget().addActionListener(e -> onShowCeBudgetBase());
+
         log.debug("Listener UI registrati.");
     }
 
@@ -175,12 +176,11 @@ public class MainController {
 
             // =========================================================
             // 0) Snapshot CE "BUDGET BASE" (prima di toccare Ricavi)
-            //    -> legge SOLO colonna J del CE Budget 2022
             // =========================================================
             Map<String, Double> ceBase = readCeBudgetSnapshot(wb, eval);
 
             // =========================================================
-            // 1) Trovo header tabella destra e colonne chiave (CODICE INVARIATO)
+            // 1) Trovo header tabella destra e colonne chiave
             // =========================================================
             int headerRowIdx = -1;
             for (int r = 0; r <= Math.min(ricaviSheet.getLastRowNum(), 200); r++) {
@@ -279,7 +279,7 @@ public class MainController {
             }
 
             // =========================================================
-            // 2) Trovo la riga corretta per Cat/Articolo (CODICE INVARIATO)
+            // 2) Trovo la riga corretta per Cat/Articolo
             // =========================================================
             String targetCat = (ar.getCat() == null) ? "" : ar.getCat().trim().toUpperCase();
             String targetArt = (ar.getArticolo() == null) ? "" : ar.getArticolo().trim().toUpperCase();
@@ -305,7 +305,7 @@ public class MainController {
             }
 
             // =========================================================
-            // 3) Leggo valori base (EUR) + POS Excel (CODICE INVARIATO)
+            // 3) Leggo valori base (EUR) + POS Excel
             // =========================================================
             eval.evaluateAll();
 
@@ -323,7 +323,7 @@ public class MainController {
             double pos0Calc = fatt0 - cogs0;
 
             // =========================================================
-            // 4) Step 1: applico variazione (CODICE INVARIATO)
+            // 4) Step 1: applico variazione
             // =========================================================
             ricaviService.writeNumeric(ricaviSheet, rowIdx, colQty, q0);
             ricaviService.writeNumeric(ricaviSheet, rowIdx, colPeur, p0);
@@ -353,12 +353,11 @@ public class MainController {
             Map<String, Double> ceAfterVar = computeCeAfterVar(ceBase, targetCat, fatt0, fatt1, cogs0, cogs1);
 
             // =========================================================
-            // 5) Step 2: compensazione per mantenere POS(calc) costante (CODICE INVARIATO)
+            // 5) Step 2: compensazione per mantenere POS(calc) costante
             // =========================================================
             double compValue;
             String compensatedVarLabel;
 
-            // ripristino scenario step1 su Excel prima di compensare
             ricaviService.writeNumeric(ricaviSheet, rowIdx, colQty, q1);
             ricaviService.writeNumeric(ricaviSheet, rowIdx, colPeur, p1);
             eval.evaluateAll();
@@ -391,7 +390,7 @@ public class MainController {
             double posStarCalc = fattStar - cogsStar;
 
             // =========================================================
-            // 6) Dettagli (CODICE INVARIATO)
+            // 6) Dettagli
             // =========================================================
             String whatChanged = (mode == SimulationMode.QUANTITY) ? "Quantità (kg)" : "Prezzo (€/kg)";
             String unitPrice = "€/kg";
@@ -438,7 +437,7 @@ public class MainController {
             view.getControlsPanel().setDetails(sb.toString());
 
             // =========================================================
-            // 7) Grafici esistenti (POS + Comp) (CODICE INVARIATO)
+            // 7) Grafici POS + Comp
             // =========================================================
             DefaultCategoryDataset posDS = new DefaultCategoryDataset();
             DefaultCategoryDataset compDS = new DefaultCategoryDataset();
@@ -489,70 +488,69 @@ public class MainController {
             view.getChartsPanel().setPosChart(posChart);
             view.getChartsPanel().setCompChart(compChart);
 
-         // =========================================================
-         // 8) CE: tre grafici separati (BASE, DOPO VAR, DELTA)
-         // =========================================================
-         List<String> keysOrdered = Arrays.asList(
-                 K_RICAVI_PF,
-                 K_RICAVI_MP,
-                 K_RICAVI_CLAV,
-                 K_ALTRI_RICAVI,
-                 K_VAR_PF,
-                 K_ACQUISTO_MP,
-                 K_VAR_SCORTE
-         );
+            // =========================================================
+            // 8) CE: tre grafici separati (BASE, DOPO VAR, DELTA)
+            // =========================================================
+            List<String> keysOrdered = Arrays.asList(
+                    K_RICAVI_PF,
+                    K_RICAVI_MP,
+                    K_RICAVI_CLAV,
+                    K_ALTRI_RICAVI,
+                    K_VAR_PF,
+                    K_ACQUISTO_MP,
+                    K_VAR_SCORTE
+            );
 
-         // --- CE BASE (solo budget base)
-         DefaultCategoryDataset ceBaseDS = new DefaultCategoryDataset();
-         for (String k : keysOrdered) {
-             String catLabel = prettifyCeKey(k);
-             ceBaseDS.addValue(ceBase.getOrDefault(k, 0.0), "Budget base", catLabel);
-         }
-         JFreeChart ceBaseChart = ChartFactory.createLineChart(
-                 "CE Budget 2022 – Valori (Budget base)",
-                 "Voce",
-                 "Valore",
-                 ceBaseDS
-         );
-         configureCategoryChart(ceBaseChart, true);
-         view.getChartsPanel().setCeBaseChart(ceBaseChart);
+            // --- CE BASE
+            DefaultCategoryDataset ceBaseDS = new DefaultCategoryDataset();
+            for (String k : keysOrdered) {
+                String catLabel = prettifyCeKey(k);
+                ceBaseDS.addValue(ceBase.getOrDefault(k, 0.0), "Budget base", catLabel);
+            }
+            JFreeChart ceBaseChart = ChartFactory.createLineChart(
+                    "CE Budget 2022 – Valori (Budget base)",
+                    "Voce",
+                    "Valore",
+                    ceBaseDS
+            );
+            configureCategoryChart(ceBaseChart, true);
+            view.getChartsPanel().setCeBaseChart(ceBaseChart);
 
-         // --- CE DOPO VARIAZIONE (solo dopo-var)
-         DefaultCategoryDataset ceVarDS = new DefaultCategoryDataset();
-         for (String k : keysOrdered) {
-             String catLabel = prettifyCeKey(k);
-             ceVarDS.addValue(ceAfterVar.getOrDefault(k, 0.0), "Dopo variazione", catLabel);
-         }
-         JFreeChart ceVarChart = ChartFactory.createLineChart(
-                 "CE Budget 2022 – Valori (Dopo variazione)",
-                 "Voce",
-                 "Valore",
-                 ceVarDS
-         );
-         configureCategoryChart(ceVarChart, true);
-         view.getChartsPanel().setCeVarChart(ceVarChart);
+            // --- CE DOPO VARIAZIONE
+            DefaultCategoryDataset ceVarDS = new DefaultCategoryDataset();
+            for (String k : keysOrdered) {
+                String catLabel = prettifyCeKey(k);
+                ceVarDS.addValue(ceAfterVar.getOrDefault(k, 0.0), "Dopo variazione", catLabel);
+            }
+            JFreeChart ceVarChart = ChartFactory.createLineChart(
+                    "CE Budget 2022 – Valori (Dopo variazione)",
+                    "Voce",
+                    "Valore",
+                    ceVarDS
+            );
+            configureCategoryChart(ceVarChart, true);
+            view.getChartsPanel().setCeVarChart(ceVarChart);
 
-         // --- CE DELTA (dopo - base) -> qui la variazione si VEDE sempre
-         DefaultCategoryDataset ceDeltaDS = new DefaultCategoryDataset();
-         for (String k : keysOrdered) {
-             String catLabel = prettifyCeKey(k);
-             double baseV = ceBase.getOrDefault(k, 0.0);
-             double varV  = ceAfterVar.getOrDefault(k, 0.0);
-             ceDeltaDS.addValue(varV - baseV, "Δ (Dopo - Base)", catLabel);
-         }
-         JFreeChart ceDeltaChart = ChartFactory.createLineChart(
-                 "CE Budget 2022 – Variazioni (Δ)",
-                 "Voce",
-                 "Δ Valore",
-                 ceDeltaDS
-         );
-         // qui NON voglio formato intero “sempre”, perché i delta possono essere piccoli
-         configureCategoryChart(ceDeltaChart, true);
-         view.getChartsPanel().setCeDeltaChart(ceDeltaChart);
-
+            // --- CE DELTA (dopo - base)
+            DefaultCategoryDataset ceDeltaDS = new DefaultCategoryDataset();
+            for (String k : keysOrdered) {
+                String catLabel = prettifyCeKey(k);
+                double baseV = ceBase.getOrDefault(k, 0.0);
+                double varV  = ceAfterVar.getOrDefault(k, 0.0);
+                ceDeltaDS.addValue(varV - baseV, "Δ (Dopo - Base)", catLabel);
+            }
+            JFreeChart ceDeltaChart = ChartFactory.createLineChart(
+                    "CE Budget 2022 – Variazioni (Δ)",
+                    "Voce",
+                    "Δ Valore",
+                    ceDeltaDS
+            );
+            // ✅ delta: formato più fine (non intero)
+            configureCategoryChart(ceDeltaChart, false);
+            view.getChartsPanel().setCeDeltaChart(ceDeltaChart);
 
             // =========================================================
-            // 9) Salvo (CODICE INVARIATO)
+            // 9) Salvo
             // =========================================================
             excelRepo.safeSaveWorkbook(wb);
 
@@ -585,7 +583,7 @@ public class MainController {
     }
 
     // ===========================
-    // CE Budget 2022 reading: SOLO colonna J (CODICE INVARIATO)
+    // CE Budget 2022 reading: SOLO colonna J
     // ===========================
     private Map<String, Double> readCeBudgetSnapshot(Workbook wb, FormulaEvaluator eval) {
         Sheet ce = findCeBudgetSheet(wb);
@@ -603,10 +601,6 @@ public class MainController {
         out.put(K_VAR_PF,       readNumericCell(ce, eval, CE_ROW_VAR_PF,      CE_COL_J));
         out.put(K_ACQUISTO_MP,  readNumericCell(ce, eval, CE_ROW_ACQUISTO_MP, CE_COL_J));
         out.put(K_VAR_SCORTE,   readNumericCell(ce, eval, CE_ROW_VAR_SCORTE,  CE_COL_J));
-
-        log.info("CE(Budget) snapshot [col J]: PF={} MP={} CLav={} Altri={} VarPF={} AcqMP={} VarScorte={}",
-                out.get(K_RICAVI_PF), out.get(K_RICAVI_MP), out.get(K_RICAVI_CLAV),
-                out.get(K_ALTRI_RICAVI), out.get(K_VAR_PF), out.get(K_ACQUISTO_MP), out.get(K_VAR_SCORTE));
 
         return out;
     }
@@ -639,7 +633,6 @@ public class MainController {
 
     private Sheet findCeBudgetSheet(Workbook wb) {
 
-        // 1) Tentativi diretti (se per caso coincide)
         String[] candidates = {
                 "CE-Budget-2022",
                 "CE BUDGET 2022",
@@ -653,19 +646,10 @@ public class MainController {
             if (s != null) return s;
         }
 
-        // 2) Debug: stampa nomi fogli
-        for (int i = 0; i < wb.getNumberOfSheets(); i++) {
-            log.info("Workbook sheet[{}] name='{}'", i, wb.getSheetName(i));
-        }
-
-        // 3) Ricerca per contenuto
         DataFormatter fmt = new DataFormatter();
         for (int i = 0; i < wb.getNumberOfSheets(); i++) {
             Sheet s = wb.getSheetAt(i);
-            if (sheetLooksLikeCeBudget2022(s, fmt)) {
-                log.info("Trovato foglio CE Budget 2022 per contenuto: '{}'", wb.getSheetName(i));
-                return s;
-            }
+            if (sheetLooksLikeCeBudget2022(s, fmt)) return s;
         }
 
         return null;
@@ -685,12 +669,7 @@ public class MainController {
                 if (txt.isEmpty()) continue;
 
                 String norm = txt.replaceAll("\\s+", " ");
-
-                boolean hasCE = norm.contains("CE");
-                boolean hasBUDGET = norm.contains("BUDGET");
-                boolean has2022 = norm.contains("2022");
-
-                if (hasCE && hasBUDGET && has2022) return true;
+                if (norm.contains("CE") && norm.contains("BUDGET") && norm.contains("2022")) return true;
             }
         }
         return false;
@@ -709,6 +688,7 @@ public class MainController {
 
     // ===========================
     // FIX: CE "Dopo variazione" calcolato (non dipende dal foglio CE)
+    // NB: per MP: Acquisto MP va con segno coerente ai valori in CE (costi negativi)
     // ===========================
     private Map<String, Double> computeCeAfterVar(
             Map<String, Double> ceBase,
@@ -723,23 +703,129 @@ public class MainController {
 
         String cat = (targetCat == null) ? "" : targetCat.trim().toUpperCase();
 
-        // Regola semplice e coerente col tuo caso MP1 (MP):
-        // - se è MP -> impatta Ricavi MP e Acquisto MP
-        // - altrimenti -> impatta Ricavi PF
         if (cat.contains("MP")) {
             out.put(K_RICAVI_MP,   ceBase.getOrDefault(K_RICAVI_MP, 0.0) + dRicavi);
+            // ✅ come nel tuo controller “buono”
             out.put(K_ACQUISTO_MP, ceBase.getOrDefault(K_ACQUISTO_MP, 0.0) - dCosti);
-
         } else {
             out.put(K_RICAVI_PF, ceBase.getOrDefault(K_RICAVI_PF, 0.0) + dRicavi);
         }
 
-        log.info("CE calc afterVar: cat='{}' dRicavi={} dCosti={}", cat, dRicavi, dCosti);
         return out;
     }
 
     private void onExit() {
         excelRepo.cleanup();
         System.exit(0);
+    }
+
+    // =====================================================================
+    // ✅ NUOVA FEATURE: finestra con grafico CE Budget 2022 base (fisso)
+    // - legge dall'EXCEL ORIGINALE
+    // - NON usa la working copy
+    // =====================================================================
+    private void onShowCeBudgetBase() {
+
+        File original = model.getOriginalExcel();
+        if (original == null || !original.exists()) {
+            JOptionPane.showMessageDialog(view, "Carica prima un file Excel.", "Attenzione", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        try (Workbook wb = WorkbookFactory.create(original)) {
+
+            Sheet ce = findCeBudgetSheet(wb);
+            if (ce == null) throw new IllegalStateException("Foglio CE Budget 2022 non trovato.");
+
+            FormulaEvaluator eval = wb.getCreationHelper().createFormulaEvaluator();
+            DataFormatter fmt = new DataFormatter();
+
+            LinkedHashMap<String, Double> v = new LinkedHashMap<>();
+
+            v.put("Ricavi PF", findValueByRowLabel(ce, eval, fmt, "RICAVI DELLE VENDITE DI PRODOTTI FINITI"));
+            v.put("Ricavi MP", findValueByRowLabel(ce, eval, fmt, "RICAVI DELLE VENDITE DI MATERIE PRIME"));
+            v.put("Ricavi C/Lav.", findValueByRowLabel(ce, eval, fmt, "RICAVI CONTO LAVORAZIONE"));
+            v.put("Altri ricavi", findValueByRowLabel(ce, eval, fmt, "ALTRI RICAVI"));
+            v.put("Var. PF", findValueByRowLabel(ce, eval, fmt, "VARIAZIONE PRODOTTI FINITI"));
+            v.put("Tot. Ricavi produzione (A)", findValueByRowLabel(ce, eval, fmt, "TOTALE RICAVI PRODUZIONE"));
+
+            v.put("Acquisto MP", findValueByRowLabel(ce, eval, fmt, "ACQUISTO MATERIE PRIME"));
+            v.put("Var. scorte", findValueByRowLabel(ce, eval, fmt, "VARIAZIONE SCORTE"));
+            v.put("Tot. Costi MP (B)", findValueByRowLabel(ce, eval, fmt, "TOTALE COSTI MATERIE PRIME"));
+
+            v.put("Costo energia", findValueByRowLabel(ce, eval, fmt, "COSTO ENERGIA"));
+            v.put("Materiali di consumo", findValueByRowLabel(ce, eval, fmt, "MATERIALI DI CONSUMO"));
+            v.put("Pulizia/smaltimento", findValueByRowLabel(ce, eval, fmt, "PULIZIA"));
+            v.put("Tot. Costi variabili prod. (C)", findValueByRowLabel(ce, eval, fmt, "COSTI VARIABILI DI PRODUZIONE"));
+
+            v.put("Trasporti/oneri vendita+acquisto", findValueByRowLabel(ce, eval, fmt, "TRASPORTI"));
+            v.put("Provvigioni/Enasarco", findValueByRowLabel(ce, eval, fmt, "PROVVIGIONI"));
+            v.put("Tot. Costi di vendita (D)", findValueByRowLabel(ce, eval, fmt, "TOTALE COSTI DI VENDITA"));
+
+            v.put("MOL (A-B-C-D)", findValueByRowLabel(ce, eval, fmt, "MARGINE OPERATIVO LORDO"));
+
+            DefaultCategoryDataset ds = new DefaultCategoryDataset();
+            for (Map.Entry<String, Double> e : v.entrySet()) {
+                ds.addValue(e.getValue(), "CE Budget 2022 (base)", e.getKey());
+            }
+
+            JFreeChart chart = ChartFactory.createLineChart(
+                    "CE Budget 2022 – Base (Excel originale)",
+                    "Voce",
+                    "Valore",
+                    ds,
+                    PlotOrientation.VERTICAL,
+                    true,
+                    true,
+                    false
+            );
+            configureCategoryChart(chart, true);
+
+            CeBudgetFrame ceFrame = new CeBudgetFrame();
+            ceFrame.setChart(chart);
+
+            view.setVisible(false);
+
+            ceFrame.getBtnBack().addActionListener(ev -> {
+                ceFrame.dispose();
+                view.setVisible(true);
+            });
+
+            ceFrame.addWindowListener(new java.awt.event.WindowAdapter() {
+                @Override
+                public void windowClosed(java.awt.event.WindowEvent e) {
+                    view.setVisible(true);
+                }
+            });
+
+            ceFrame.setVisible(true);
+
+        } catch (Exception ex) {
+            log.error("Errore apertura CE Budget base", ex);
+            JOptionPane.showMessageDialog(view, "Errore: " + ex.getMessage(), "Errore", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private double findValueByRowLabel(Sheet sh, FormulaEvaluator eval, DataFormatter fmt, String labelNeedle) {
+
+        String needle = labelNeedle.trim().toUpperCase();
+        int maxRows = Math.min(sh.getLastRowNum(), 200);
+
+        for (int r = 0; r <= maxRows; r++) {
+            Row row = sh.getRow(r);
+            if (row == null) continue;
+
+            for (int c = 0; c <= 8; c++) {
+                String txt = fmt.formatCellValue(row.getCell(c)).trim().toUpperCase();
+                if (txt.isEmpty()) continue;
+
+                if (txt.contains(needle)) {
+                    return readNumericCell(sh, eval, r, 9);
+                }
+            }
+        }
+
+        log.warn("Voce CE non trovata nel foglio: '{}'", labelNeedle);
+        return 0.0;
     }
 }

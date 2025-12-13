@@ -12,6 +12,9 @@ public class MainFrame extends JFrame {
     private JButton btnExit;
     private JButton btnOpenWorkingCopy;
 
+    // ✅ nuovo bottone
+    private JButton btnShowCeBudget;
+
     private JLabel lblStatus;
     private JLabel lblFileName;
 
@@ -59,8 +62,13 @@ public class MainFrame extends JFrame {
         btnOpenWorkingCopy = new JButton("Apri copia");
         btnOpenWorkingCopy.setEnabled(false);
 
+        // ✅ nuovo bottone CE base
+        btnShowCeBudget = new JButton("CE Budget 2022");
+        btnShowCeBudget.setEnabled(false);
+
         statusRight.add(btnLoadExcel);
         statusRight.add(btnOpenWorkingCopy);
+        statusRight.add(btnShowCeBudget);
         statusRight.add(btnExit);
 
         status.add(statusLeft, BorderLayout.CENTER);
@@ -89,6 +97,9 @@ public class MainFrame extends JFrame {
     public JButton getBtnExit() { return btnExit; }
     public JButton getBtnOpenWorkingCopy() { return btnOpenWorkingCopy; }
 
+    // ✅ getter nuovo
+    public JButton getBtnShowCeBudget() { return btnShowCeBudget; }
+
     public SimulationControlsPanel getControlsPanel() { return controlsPanel; }
     public ChartsPanel getChartsPanel() { return chartsPanel; }
 
@@ -96,11 +107,13 @@ public class MainFrame extends JFrame {
         lblStatus.setText("Excel caricato");
         lblFileName.setText("File: " + fileName);
         btnOpenWorkingCopy.setEnabled(true);
+        btnShowCeBudget.setEnabled(true);
     }
 
     public void setExcelNotLoaded() {
         lblStatus.setText("Excel non caricato");
         lblFileName.setText("Seleziona un file .xlsx per iniziare");
         btnOpenWorkingCopy.setEnabled(false);
+        btnShowCeBudget.setEnabled(false);
     }
 }
