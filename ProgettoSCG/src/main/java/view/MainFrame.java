@@ -11,13 +11,13 @@ public class MainFrame extends JFrame {
     private JButton btnLoadExcel;
     private JButton btnExit;
     private JButton btnOpenWorkingCopy;
-
-    // ✅ nuovo bottone
     private JButton btnShowCeBudget;
+    private JButton btnResetExcel;
+
 
     private JLabel lblStatus;
     private JLabel lblFileName;
-
+    private JButton btnShowPremioComp;
     private SimulationControlsPanel controlsPanel;
     private ChartsPanel chartsPanel;
 
@@ -65,10 +65,24 @@ public class MainFrame extends JFrame {
         // ✅ nuovo bottone CE base
         btnShowCeBudget = new JButton("CE Budget 2022");
         btnShowCeBudget.setEnabled(false);
+        
+        
+     // ...
+        btnShowPremioComp = new JButton("Compensa Premio");
+        btnShowPremioComp.setEnabled(false);
 
+        // ✅ nuovo bottone RESET
+        btnResetExcel = new JButton("Reset Excel");
+        btnResetExcel.setEnabled(false);
+
+        // ATTENZIONE: qui avevi due volte btnShowPremioComp
+        statusRight.add(btnShowPremioComp);
         statusRight.add(btnLoadExcel);
         statusRight.add(btnOpenWorkingCopy);
+        statusRight.add(btnResetExcel);      // ✅ qui
         statusRight.add(btnShowCeBudget);
+        statusRight.add(btnExit);
+        // ...
         statusRight.add(btnExit);
 
         status.add(statusLeft, BorderLayout.CENTER);
@@ -92,7 +106,9 @@ public class MainFrame extends JFrame {
 
         setExcelNotLoaded();
     }
-
+    
+    public JButton getBtnResetExcel() { return btnResetExcel; }
+    public JButton getBtnShowPremioComp() { return btnShowPremioComp; }
     public JButton getBtnLoadExcel() { return btnLoadExcel; }
     public JButton getBtnExit() { return btnExit; }
     public JButton getBtnOpenWorkingCopy() { return btnOpenWorkingCopy; }
@@ -108,6 +124,8 @@ public class MainFrame extends JFrame {
         lblFileName.setText("File: " + fileName);
         btnOpenWorkingCopy.setEnabled(true);
         btnShowCeBudget.setEnabled(true);
+        btnShowPremioComp.setEnabled(true);
+        btnResetExcel.setEnabled(true);     // ✅
     }
 
     public void setExcelNotLoaded() {
@@ -115,5 +133,9 @@ public class MainFrame extends JFrame {
         lblFileName.setText("Seleziona un file .xlsx per iniziare");
         btnOpenWorkingCopy.setEnabled(false);
         btnShowCeBudget.setEnabled(false);
+        btnShowPremioComp.setEnabled(false);
+        btnResetExcel.setEnabled(false);    // ✅
     }
+
+
 }

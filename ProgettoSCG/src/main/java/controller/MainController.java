@@ -35,6 +35,8 @@ public class MainController {
     private final AppModel model;
     private final MainFrame view;
     private final ExcelRepository excelRepo;
+    private PremioCompController premioController;
+
 
     private RicaviExcelService ricaviService;
     private List<ArticleRow> cachedArticles = new ArrayList<>();
@@ -75,16 +77,79 @@ public class MainController {
     }
 
     private void initListeners() {
+    	view.getBtnResetExcel().addActionListener(e -> onResetExcel());
         view.getBtnLoadExcel().addActionListener(e -> onLoadExcel());
         view.getBtnExit().addActionListener(e -> onExit());
         view.getBtnOpenWorkingCopy().addActionListener(e -> onOpenWorkingCopy());
         view.getControlsPanel().getBtnSimulate().addActionListener(e -> onSimulate());
+        view.getBtnShowPremioComp().addActionListener(e -> onOpenPremioComp());
+
 
         // ✅ nuovo listener: CE Budget 2022 (base fisso)
         view.getBtnShowCeBudget().addActionListener(e -> onShowCeBudgetBase());
 
         log.debug("Listener UI registrati.");
     }
+
+    private void onOpenPremioComp() {
+        if (model.getWorkingExcelCopy() == null) {
+            JOptionPane.showMessageDialog(view, "Carica prima un file Excel.", "Attenzione", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        if (premioController == null) {
+            premioController = new PremioCompController(model, view, excelRepo);
+        }
+        premioController.open();
+    }
+
+    private void onResetExcel() {
+        if (model.getWorkingExcelCopy() == null) {
+            JOptionPane.showMessageDialog(view, "Carica prima un file Excel.", "Attenzione", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        int ok = JOptionPane.showConfirmDialog(
+                view,
+                "Vuoi ripristinare la copia di lavoro allo stato iniziale?\n" +
+                "Perderai tutte le simulazioni fatte finora nella sessione.",
+                "Reset Excel",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE
+        );
+        if (ok != JOptionPane.YES_OPTION) return;
+
+        try {
+            // ✅ reset working copy dal base snapshot
+            File wc = excelRepo.resetWorkingCopyToBase();
+            model.setWorkingExcelCopy(wc);
+
+            // ✅ ricreo service e ricarico articoli (così riparti da base)
+            ricaviService = new RicaviExcelService(wc);
+            cachedArticles = ricaviService.loadArticles();
+            view.getControlsPanel().setArticles(cachedArticles);
+
+            // ✅ pulisco output (dettagli + grafici)
+            view.getControlsPanel().setDetails("");
+            view.getChartsPanel().setPosChart(null);
+            view.getChartsPanel().setCompChart(null);
+            view.getChartsPanel().setCeBaseChart(null);
+            view.getChartsPanel().setCeVarChart(null);
+            view.getChartsPanel().setCeDeltaChart(null);
+
+            JOptionPane.showMessageDialog(view, "Reset completato. Riparti dai valori base.", "OK", JOptionPane.INFORMATION_MESSAGE);
+
+        } catch (Exception ex) {
+            log.error("Errore reset working copy", ex);
+            JOptionPane.showMessageDialog(
+                    view,
+                    "Errore reset: " + ex.getMessage() + "\n\n" +
+                    "Se hai aperto la copia in Excel, chiudila e riprova.",
+                    "Errore",
+                    JOptionPane.ERROR_MESSAGE
+            );
+        }
+    }
+
 
     private void onLoadExcel() {
         log.info("Click: Carica Excel");
@@ -156,7 +221,7 @@ public class MainController {
 
         SimulationMode mode = view.getControlsPanel().getMode();
 
-        int percent;
+        double percent;
         try {
             percent = view.getControlsPanel().getPercent();
         } catch (Exception e) {

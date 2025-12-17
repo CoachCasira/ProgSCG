@@ -95,13 +95,19 @@ public class SimulationControlsPanel extends JPanel {
         return rbQty.isSelected() ? SimulationMode.QUANTITY : SimulationMode.PRICE;
     }
 
-    public int getPercent() {
+    public double getPercent() {
+        String raw = txtPercent.getText().trim();
+        if (raw.isEmpty()) throw new IllegalArgumentException("Percentuale non valida: campo vuoto");
+
+        raw = raw.replace("%", "").trim().replace(",", ".");
+
         try {
-            return Integer.parseInt(txtPercent.getText().trim());
+            return Double.parseDouble(raw);
         } catch (Exception e) {
             throw new IllegalArgumentException("Percentuale non valida: '" + txtPercent.getText() + "'");
         }
     }
+
 
     public JButton getBtnSimulate() { return btnSimulate; }
 
