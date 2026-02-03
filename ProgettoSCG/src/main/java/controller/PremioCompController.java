@@ -27,6 +27,14 @@ import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.List;
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Font;
+import org.jfree.chart.axis.CategoryAxis;
+import org.jfree.chart.axis.CategoryLabelPositions;
+import org.jfree.chart.axis.NumberAxis;
+import org.jfree.chart.renderer.category.BarRenderer;
+import org.jfree.chart.renderer.category.StandardBarPainter;
 
 public class PremioCompController {
 
@@ -433,7 +441,7 @@ public class PremioCompController {
             posTotDS.addValue(totPos1_calc, "POS Totale", "Dopo variazione");
             posTotDS.addValue(totPos2_calc, "POS Totale", "Dopo compensazione");
 
-            JFreeChart posChart = ChartFactory.createLineChart(
+            JFreeChart posChart = ChartFactory.createBarChart(
                     "POS Totale – " + targetArt + " (compenso con PREMIO)",
                     "Scenario",
                     "POS Totale",
@@ -465,7 +473,7 @@ public class PremioCompController {
             premioDS.addValue(premioAnn0,     "Premio annuo (W66)", "Dopo variazione");
             premioDS.addValue(premioAnnStar,  "Premio annuo (W66)", "Dopo compensazione");
 
-            JFreeChart premioChart = ChartFactory.createLineChart(
+            JFreeChart premioChart = ChartFactory.createBarChart(
                     "Leva + Premio – " + targetArt,
                     "Scenario",
                     "Valore",
@@ -558,19 +566,73 @@ public class PremioCompController {
 
     private void configureCategoryChart(JFreeChart chart, boolean integerValues) {
         CategoryPlot plot = chart.getCategoryPlot();
-        LineAndShapeRenderer r = (LineAndShapeRenderer) plot.getRenderer();
 
-        r.setDefaultShapesVisible(true);
-        r.setDefaultItemLabelsVisible(true);
+        // --- estetica base
+        chart.setBackgroundPaint(Color.WHITE);
+        plot.setBackgroundPaint(new Color(250, 250, 250));
+        plot.setOutlineVisible(false);
+        plot.setRangeGridlinePaint(new Color(220, 220, 220));
+        plot.setDomainGridlinePaint(new Color(220, 220, 220));
+        plot.setRangeGridlinesVisible(true);
+        plot.setDomainGridlinesVisible(true);
 
+        // --- font
+        Font axisFont = new Font("SansSerif", Font.PLAIN, 12);
+        Font tickFont = new Font("SansSerif", Font.PLAIN, 11);
+
+        CategoryAxis domain = plot.getDomainAxis();
+        domain.setLabelFont(axisFont);
+        domain.setTickLabelFont(tickFont);
+
+        int cols = (plot.getDataset() != null) ? plot.getDataset().getColumnCount() : 0;
+        if (cols > 4) {
+            domain.setCategoryLabelPositions(
+                    CategoryLabelPositions.createUpRotationLabelPositions(Math.PI / 8.0)
+            );
+        } else {
+            domain.setCategoryLabelPositions(CategoryLabelPositions.STANDARD);
+        }
+
+        // --- asse Y "sensato"
         NumberFormat fmt = integerValues
                 ? new DecimalFormat("#,##0")
                 : new DecimalFormat("#,##0.000");
 
-        r.setDefaultItemLabelGenerator(new StandardCategoryItemLabelGenerator("{2}", fmt));
+        if (plot.getRangeAxis() instanceof NumberAxis) {
+            NumberAxis range = (NumberAxis) plot.getRangeAxis();
+            range.setLabelFont(axisFont);
+            range.setTickLabelFont(tickFont);
 
-        ValueAxis range = plot.getRangeAxis();
-        range.setUpperMargin(0.20);
-        range.setLowerMargin(0.10);
+            range.setNumberFormatOverride(fmt);
+            range.setAutoRangeIncludesZero(true);
+
+            if (integerValues) {
+                range.setStandardTickUnits(NumberAxis.createIntegerTickUnits());
+            }
+
+            range.setUpperMargin(0.15);
+            range.setLowerMargin(0.10);
+        }
+
+        // --- renderer: Bar chart
+        if (plot.getRenderer() instanceof BarRenderer) {
+            BarRenderer r = (BarRenderer) plot.getRenderer();
+            r.setShadowVisible(false);
+            r.setBarPainter(new StandardBarPainter());
+
+            r.setDefaultItemLabelsVisible(true);
+            r.setDefaultItemLabelGenerator(new StandardCategoryItemLabelGenerator("{2}", fmt));
+            r.setDefaultItemLabelFont(new Font("SansSerif", Font.PLAIN, 11));
+        }
+
+        // --- renderer: Line chart (se qualche grafico rimane a linee)
+        if (plot.getRenderer() instanceof LineAndShapeRenderer) {
+            LineAndShapeRenderer r = (LineAndShapeRenderer) plot.getRenderer();
+
+            r.setDefaultShapesVisible(true);
+            r.setDefaultItemLabelsVisible(true);
+            r.setDefaultItemLabelGenerator(new StandardCategoryItemLabelGenerator("{2}", fmt));
+            r.setDefaultStroke(new BasicStroke(2.0f));
+        }
     }
 }

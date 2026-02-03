@@ -12,7 +12,6 @@ import org.apache.poi.ss.usermodel.*;
 
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.JFreeChart;
-import org.jfree.chart.axis.ValueAxis;
 import org.jfree.chart.labels.StandardCategoryItemLabelGenerator;
 import org.jfree.chart.plot.CategoryPlot;
 import org.jfree.chart.plot.PlotOrientation;
@@ -27,6 +26,15 @@ import java.io.File;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.util.*;
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Font;
+
+import org.jfree.chart.axis.CategoryAxis;
+import org.jfree.chart.axis.CategoryLabelPositions;
+import org.jfree.chart.axis.NumberAxis;
+import org.jfree.chart.renderer.category.BarRenderer;
+import org.jfree.chart.renderer.category.StandardBarPainter;
 
 public class MainController {
 
@@ -37,13 +45,68 @@ public class MainController {
     private final ExcelRepository excelRepo;
     private PremioCompController premioController;
 
-
     private RicaviExcelService ricaviService;
     private List<ArticleRow> cachedArticles = new ArrayList<>();
 
     private static final DecimalFormat DF_INT = new DecimalFormat("#,##0");
     private static final DecimalFormat DF_3   = new DecimalFormat("#,##0.000");
     private static final DecimalFormat DF_2   = new DecimalFormat("#,##0.00");
+
+    /**
+     * Riga HTML standard per la sezione "Dettagli".
+     * Mantiene un look pulito senza cambiare la logica dei calcoli.
+     */
+    private static String rowHtml(String k, String v) {
+        String key = (k == null) ? "" : k;
+        String val = (v == null) ? "" : v;
+        return "<tr>" +
+                "<td style='padding:4px 8px;border-top:1px solid #eee;color:#333;white-space:nowrap;'><b>" + key + "</b></td>" +
+                "<td style='padding:4px 8px;border-top:1px solid #eee;color:#111;text-align:right;'>" + val + "</td>" +
+                "</tr>";
+    }
+
+    // ==========================================================
+    // ✅ FIX EXCEL: helper per aggiornare celle senza rompere formule
+    // ==========================================================
+    private void writeNumericIfNotFormula(Sheet sheet, int rowIdx, int colIdx, double value) {
+        Row row = sheet.getRow(rowIdx);
+        if (row == null) row = sheet.createRow(rowIdx);
+
+        Cell cell = row.getCell(colIdx, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
+
+        // NON sovrascrivere formule
+        if (cell.getCellType() == CellType.FORMULA) return;
+
+        cell.setCellValue(value);
+    }
+
+    /**
+     * Se la cella è una formula, valuta e aggiorna il cached result
+     * (serve per vedere valori aggiornati aprendo la copia in Excel).
+     */
+    private void evaluateFormulaCellIfPresent(Sheet sheet, FormulaEvaluator eval, int rowIdx, Integer colIdx) {
+        if (colIdx == null) return;
+
+        Row row = sheet.getRow(rowIdx);
+        if (row == null) return;
+
+        Cell cell = row.getCell(colIdx, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+        if (cell == null) return;
+
+        if (cell.getCellType() == CellType.FORMULA) {
+            eval.evaluateFormulaCell(cell);
+        }
+    }
+
+    /**
+     * Forza Excel a ricalcolare all'apertura del file.
+     */
+    private void forceExcelRecalcOnOpen(Workbook wb) {
+        wb.setForceFormulaRecalculation(true);
+        for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+            wb.getSheetAt(i).setForceFormulaRecalculation(true);
+        }
+    }
 
     // ===========================
     // CE Budget 2022: mapping righe/colonna
@@ -77,13 +140,12 @@ public class MainController {
     }
 
     private void initListeners() {
-    	view.getBtnResetExcel().addActionListener(e -> onResetExcel());
+        view.getBtnResetExcel().addActionListener(e -> onResetExcel());
         view.getBtnLoadExcel().addActionListener(e -> onLoadExcel());
         view.getBtnExit().addActionListener(e -> onExit());
         view.getBtnOpenWorkingCopy().addActionListener(e -> onOpenWorkingCopy());
         view.getControlsPanel().getBtnSimulate().addActionListener(e -> onSimulate());
         view.getBtnShowPremioComp().addActionListener(e -> onOpenPremioComp());
-
 
         // ✅ nuovo listener: CE Budget 2022 (base fisso)
         view.getBtnShowCeBudget().addActionListener(e -> onShowCeBudgetBase());
@@ -111,7 +173,7 @@ public class MainController {
         int ok = JOptionPane.showConfirmDialog(
                 view,
                 "Vuoi ripristinare la copia di lavoro allo stato iniziale?\n" +
-                "Perderai tutte le simulazioni fatte finora nella sessione.",
+                        "Perderai tutte le simulazioni fatte finora nella sessione.",
                 "Reset Excel",
                 JOptionPane.YES_NO_OPTION,
                 JOptionPane.WARNING_MESSAGE
@@ -143,13 +205,12 @@ public class MainController {
             JOptionPane.showMessageDialog(
                     view,
                     "Errore reset: " + ex.getMessage() + "\n\n" +
-                    "Se hai aperto la copia in Excel, chiudila e riprova.",
+                            "Se hai aperto la copia in Excel, chiudila e riprova.",
                     "Errore",
                     JOptionPane.ERROR_MESSAGE
             );
         }
     }
-
 
     private void onLoadExcel() {
         log.info("Click: Carica Excel");
@@ -221,6 +282,9 @@ public class MainController {
 
         SimulationMode mode = view.getControlsPanel().getMode();
 
+        // ✅ nuova opzione: esegui o meno la compensazione
+        boolean doCompensate = view.getControlsPanel().isCompensateSelected();
+
         double percent;
         try {
             percent = view.getControlsPanel().getPercent();
@@ -229,7 +293,7 @@ public class MainController {
             return;
         }
 
-        log.info("Simula articolo={} mode={} percent={}", ar, mode, percent);
+        log.info("Simula articolo={} mode={} percent={} compensate={}", ar, mode, percent, doCompensate);
 
         try (Workbook wb = WorkbookFactory.create(model.getWorkingExcelCopy())) {
 
@@ -309,6 +373,8 @@ public class MainController {
 
             Integer colCat = null, colArt = null, colQty = null, colPos = null;
             Integer colPeur = null, colCMPeur = null;
+            Integer colFatt = null;
+            Integer colCogs = null;
 
             boolean foundTable = false;
 
@@ -324,6 +390,11 @@ public class MainController {
                 Integer pe = findContainsInWindow.apply("p medio (€/kg)", win);
                 Integer cmpe = findContainsInWindow.apply("cmp medio (€/kg)", win);
 
+                // facoltativi: se presenti, li aggiorniamo in working copy
+                Integer fatt = findContainsInWindow.apply("fatturato", win);
+                Integer cogs = findContainsInWindow.apply("cogs", win);
+                if (cogs == null) cogs = findContainsInWindow.apply("costo del venduto", win);
+
                 if (a != null && q != null && p != null && pe != null && cmpe != null) {
                     colCat = catColCandidate;
                     colArt = a;
@@ -331,6 +402,10 @@ public class MainController {
                     colPos = p;
                     colPeur = pe;
                     colCMPeur = cmpe;
+
+                    colFatt = fatt;
+                    colCogs = cogs;
+
                     foundTable = true;
                     break;
                 }
@@ -390,6 +465,7 @@ public class MainController {
             // =========================================================
             // 4) Step 1: applico variazione
             // =========================================================
+            // riallineo prima alle condizioni base
             ricaviService.writeNumeric(ricaviSheet, rowIdx, colQty, q0);
             ricaviService.writeNumeric(ricaviSheet, rowIdx, colPeur, p0);
             eval.evaluateAll();
@@ -406,11 +482,25 @@ public class MainController {
             }
 
             eval.evaluateAll();
+
             double pos1Excel = ricaviService.readNumeric(ricaviSheet, eval, rowIdx, colPos);
 
             double fatt1 = q1 * p1;
             double cogs1 = q1 * cmp0;
             double pos1Calc = fatt1 - cogs1;
+
+            // =========================================================
+            // ✅ FIX EXCEL: dopo VARIAZIONE aggiorna celle & cache
+            // =========================================================
+            if (colFatt != null) writeNumericIfNotFormula(ricaviSheet, rowIdx, colFatt, fatt1);
+            if (colCogs != null) writeNumericIfNotFormula(ricaviSheet, rowIdx, colCogs, cogs1);
+
+            evaluateFormulaCellIfPresent(ricaviSheet, eval, rowIdx, colFatt);
+            evaluateFormulaCellIfPresent(ricaviSheet, eval, rowIdx, colCogs);
+            evaluateFormulaCellIfPresent(ricaviSheet, eval, rowIdx, colPos);
+
+            forceExcelRecalcOnOpen(wb);
+            eval.evaluateAll();
 
             // =========================================================
             // 4B) CE dopo variazione (FIX): calcolato, non riletto da Excel
@@ -420,86 +510,137 @@ public class MainController {
             // =========================================================
             // 5) Step 2: compensazione per mantenere POS(calc) costante
             // =========================================================
-            double compValue;
-            String compensatedVarLabel;
+            Double compValue = null;
+            String compensatedVarLabel = null;
+            double pos2Excel = Double.NaN;
+            double qStar = Double.NaN;
+            double pStar = Double.NaN;
+            double fattStar = Double.NaN;
+            double cogsStar = Double.NaN;
+            double posStarCalc = Double.NaN;
 
-            ricaviService.writeNumeric(ricaviSheet, rowIdx, colQty, q1);
-            ricaviService.writeNumeric(ricaviSheet, rowIdx, colPeur, p1);
-            eval.evaluateAll();
+            if (doCompensate) {
+                ricaviService.writeNumeric(ricaviSheet, rowIdx, colQty, q1);
+                ricaviService.writeNumeric(ricaviSheet, rowIdx, colPeur, p1);
+                eval.evaluateAll();
 
-            if (mode == SimulationMode.QUANTITY) {
-                compValue = cmp0 + (pos0Calc / q1);
-                compensatedVarLabel = "P medio (€/kg)";
-                ricaviService.writeNumeric(ricaviSheet, rowIdx, colPeur, compValue);
-            } else {
-                double denom = (p1 - cmp0);
-                if (Math.abs(denom) < 1e-12) {
-                    throw new IllegalStateException("Compensazione impossibile: P1 - CMP0 = 0.");
+                if (mode == SimulationMode.QUANTITY) {
+                    // compenso su Prezzo
+                    compValue = cmp0 + (pos0Calc / q1);
+                    compensatedVarLabel = "P medio (€/kg)";
+                    ricaviService.writeNumeric(ricaviSheet, rowIdx, colPeur, compValue);
+                } else {
+                    // compenso su Quantità
+                    double denom = (p1 - cmp0);
+                    if (Math.abs(denom) < 1e-12) {
+                        throw new IllegalStateException("Compensazione impossibile: P1 - CMP0 = 0.");
+                    }
+                    compValue = pos0Calc / denom;
+                    if (compValue <= 0) {
+                        throw new IllegalStateException("Compensazione impossibile: Q* <= 0 (" + compValue + ").");
+                    }
+                    compensatedVarLabel = "Quantità (kg)";
+                    ricaviService.writeNumeric(ricaviSheet, rowIdx, colQty, compValue);
                 }
-                compValue = pos0Calc / denom;
-                if (compValue <= 0) {
-                    throw new IllegalStateException("Compensazione impossibile: Q* <= 0 (" + compValue + ").");
-                }
-                compensatedVarLabel = "Quantità (kg)";
-                ricaviService.writeNumeric(ricaviSheet, rowIdx, colQty, compValue);
+
+                eval.evaluateAll();
+                pos2Excel = ricaviService.readNumeric(ricaviSheet, eval, rowIdx, colPos);
+
+                qStar = (mode == SimulationMode.QUANTITY) ? q1 : compValue;
+                pStar = (mode == SimulationMode.QUANTITY) ? compValue : p1;
+
+                fattStar = qStar * pStar;
+                cogsStar = qStar * cmp0;
+                posStarCalc = fattStar - cogsStar;
+
+                // =========================================================
+                // ✅ FIX EXCEL: dopo COMPENSAZIONE aggiorna celle & cache
+                // =========================================================
+                if (colFatt != null) writeNumericIfNotFormula(ricaviSheet, rowIdx, colFatt, fattStar);
+                if (colCogs != null) writeNumericIfNotFormula(ricaviSheet, rowIdx, colCogs, cogsStar);
+
+                evaluateFormulaCellIfPresent(ricaviSheet, eval, rowIdx, colFatt);
+                evaluateFormulaCellIfPresent(ricaviSheet, eval, rowIdx, colCogs);
+                evaluateFormulaCellIfPresent(ricaviSheet, eval, rowIdx, colPos);
+
+                forceExcelRecalcOnOpen(wb);
+                eval.evaluateAll();
             }
 
-            eval.evaluateAll();
-            double pos2Excel = ricaviService.readNumeric(ricaviSheet, eval, rowIdx, colPos);
-
-            double qStar = (mode == SimulationMode.QUANTITY) ? q1 : compValue;
-            double pStar = (mode == SimulationMode.QUANTITY) ? compValue : p1;
-
-            double fattStar = qStar * pStar;
-            double cogsStar = qStar * cmp0;
-            double posStarCalc = fattStar - cogsStar;
-
             // =========================================================
-            // 6) Dettagli
+            // 6) Dettagli (HTML)
             // =========================================================
             String whatChanged = (mode == SimulationMode.QUANTITY) ? "Quantità (kg)" : "Prezzo (€/kg)";
             String unitPrice = "€/kg";
 
-            StringBuilder sb = new StringBuilder();
-            sb.append("Articolo: ").append(targetArt).append(" [").append(targetCat).append("]\n");
-            sb.append("Percentuale applicata: ").append(percent).append("%\n\n");
+            StringBuilder html = new StringBuilder();
+            html.append("<html><body style='font-family:SansSerif;font-size:12px;'>");
+            html.append("<div style='font-size:13px;'><b>Articolo:</b> ").append(targetArt)
+                    .append(" <span style='color:#666;'>[").append(targetCat).append("]</span></div>");
+            html.append("<div><b>Percentuale applicata:</b> ").append(DF_2.format(percent)).append("%</div>");
+            html.append("<div><b>Compensazione:</b> ")
+                    .append(doCompensate ? "<span style='color:#1b5e20;'><b>SI</b></span>" : "<span style='color:#b71c1c;'><b>NO</b></span>")
+                    .append("</div>");
+            html.append("<hr style='border:none;border-top:1px solid #ddd;margin:10px 0;' />");
 
-            sb.append("Valori originali (tabella destra):\n");
-            sb.append("  Q0 = ").append(DF_INT.format(q0)).append(" kg\n");
-            sb.append("  P0 = ").append(DF_3.format(p0)).append(" ").append(unitPrice).append("\n");
-            sb.append("  CMP0 = ").append(DF_3.format(cmp0)).append(" ").append(unitPrice).append("\n");
-            sb.append("  Fatturato0 = Q0*P0 = ").append(DF_INT.format(fatt0)).append("\n");
-            sb.append("  COGS0 = Q0*CMP0 = ").append(DF_INT.format(cogs0)).append("\n");
-            sb.append("  POS0 (target, Excel) = ").append(DF_INT.format(pos0Excel)).append("\n");
-            sb.append("  POS0 (calc) = ").append(DF_INT.format(pos0Calc)).append("\n\n");
+            // Tabella base
+            html.append("<div style='margin-bottom:6px;'><b>Valori originali</b></div>");
+            html.append("<table style='border-collapse:collapse;width:100%;'>");
+            html.append(rowHtml("Q0", DF_INT.format(q0) + " kg"));
+            html.append(rowHtml("P0", DF_3.format(p0) + " " + unitPrice));
+            html.append(rowHtml("CMP0", DF_3.format(cmp0) + " " + unitPrice));
+            html.append(rowHtml("Fatturato0 = Q0·P0", DF_INT.format(fatt0)));
+            html.append(rowHtml("COGS0 = Q0·CMP0", DF_INT.format(cogs0)));
+            html.append(rowHtml("POS0 (Excel)", DF_INT.format(pos0Excel)));
+            html.append(rowHtml("POS0 (calc)", DF_INT.format(pos0Calc)));
+            html.append("</table>");
 
-            sb.append("Step 1 — Dopo variazione (senza compensazione):\n");
-            sb.append("  Leva modificata: ").append(whatChanged).append("\n");
-            sb.append("  Q1 = ").append(DF_INT.format(q1)).append(" kg\n");
-            sb.append("  P1 = ").append(DF_3.format(p1)).append(" ").append(unitPrice).append("\n");
-            sb.append("  POS senza compensazione (Excel) = ").append(DF_INT.format(pos1Excel)).append("\n");
-            sb.append("  POS senza compensazione (calc) = ").append(DF_INT.format(pos1Calc)).append("\n\n");
+            // Step 1
+            html.append("<hr style='border:none;border-top:1px solid #eee;margin:10px 0;' />");
+            html.append("<div style='margin-bottom:6px;'><b>Step 1 — Dopo variazione</b> <span style='color:#666;'>(senza compensazione)</span></div>");
+            html.append("<table style='border-collapse:collapse;width:100%;'>");
+            html.append(rowHtml("Leva modificata", whatChanged));
+            html.append(rowHtml("Q1", DF_INT.format(q1) + " kg"));
+            html.append(rowHtml("P1", DF_3.format(p1) + " " + unitPrice));
+            html.append(rowHtml("Fatturato1 = Q1·P1", DF_INT.format(fatt1)));
+            html.append(rowHtml("COGS1 = Q1·CMP0", DF_INT.format(cogs1)));
+            html.append(rowHtml("POS1 (Excel)", DF_INT.format(pos1Excel)));
+            html.append(rowHtml("POS1 (calc)", DF_INT.format(pos1Calc)));
+            html.append("</table>");
 
-            sb.append("Step 2 — Compensazione per mantenere POS costante:\n");
-            sb.append("  Target: POS(calc) = POS0(calc) = ").append(DF_INT.format(pos0Calc)).append("\n");
-            sb.append("  Variabile compensata: ").append(compensatedVarLabel).append("\n");
+            // Step 2 (solo se richiesto)
+            if (doCompensate) {
+                html.append("<hr style='border:none;border-top:1px solid #eee;margin:10px 0;' />");
+                html.append("<div style='margin-bottom:6px;'><b>Step 2 — Compensazione</b> <span style='color:#666;'>(mantieni POS costante)</span></div>");
+                html.append("<table style='border-collapse:collapse;width:100%;'>");
+                html.append(rowHtml("Target POS(calc)", DF_INT.format(pos0Calc)));
+                html.append(rowHtml("Variabile compensata", compensatedVarLabel));
 
-            if (mode == SimulationMode.QUANTITY) {
-                double deltaPct = ((compValue / p0) - 1.0) * 100.0;
-                sb.append("  P* = ").append(DF_3.format(compValue)).append(" ").append(unitPrice).append("\n");
-                sb.append("  ΔP% = ").append(DF_2.format(deltaPct)).append("%\n\n");
-            } else {
-                double deltaPct = ((compValue / q0) - 1.0) * 100.0;
-                sb.append("  Q* = ").append(DF_INT.format(compValue)).append(" kg\n");
-                sb.append("  ΔQ% = ").append(DF_2.format(deltaPct)).append("%\n\n");
+                if (mode == SimulationMode.QUANTITY) {
+                    double deltaPct = ((compValue / p0) - 1.0) * 100.0;
+                    html.append(rowHtml("P*", DF_3.format(compValue) + " " + unitPrice));
+                    html.append(rowHtml("ΔP%", DF_2.format(deltaPct) + "%"));
+                } else {
+                    double deltaPct = ((compValue / q0) - 1.0) * 100.0;
+                    html.append(rowHtml("Q*", DF_INT.format(compValue) + " kg"));
+                    html.append(rowHtml("ΔQ%", DF_2.format(deltaPct) + "%"));
+                }
+
+                html.append("</table>");
+
+                html.append("<hr style='border:none;border-top:1px solid #eee;margin:10px 0;' />");
+                html.append("<div style='margin-bottom:6px;'><b>Check finale</b></div>");
+                html.append("<table style='border-collapse:collapse;width:100%;'>");
+                html.append(rowHtml("Fatturato* = Q*·P*", DF_INT.format(fattStar)));
+                html.append(rowHtml("COGS* = Q*·CMP0", DF_INT.format(cogsStar)));
+                html.append(rowHtml("POS dopo compensazione (Excel)", DF_INT.format(pos2Excel)));
+                html.append(rowHtml("POS dopo compensazione (calc)", DF_INT.format(posStarCalc)));
+                html.append(rowHtml("Errore |POS(calc) - POS0(calc)|", DF_INT.format(Math.abs(posStarCalc - pos0Calc))));
+                html.append("</table>");
             }
 
-            sb.append("Check finale:\n");
-            sb.append("  POS dopo compensazione (Excel) = ").append(DF_INT.format(pos2Excel)).append("\n");
-            sb.append("  POS dopo compensazione (calc) = ").append(DF_INT.format(posStarCalc)).append("\n");
-            sb.append("  Errore |POS(calc) - POS0(calc)| = ").append(DF_INT.format(Math.abs(posStarCalc - pos0Calc))).append("\n");
-
-            view.getControlsPanel().setDetails(sb.toString());
+            html.append("</body></html>");
+            view.getControlsPanel().setDetails(html.toString());
 
             // =========================================================
             // 7) Grafici POS + Comp
@@ -509,39 +650,49 @@ public class MainController {
 
             posDS.addValue(pos0Excel, "POS (Excel)", "Originale");
             posDS.addValue(pos1Excel, "POS (Excel)", "Dopo variazione");
-            posDS.addValue(pos2Excel, "POS (Excel)", "Dopo compensazione");
 
             posDS.addValue(pos0Calc, "POS (calc)", "Originale");
             posDS.addValue(pos1Calc, "POS (calc)", "Dopo variazione");
-            posDS.addValue(posStarCalc, "POS (calc)", "Dopo compensazione");
+
+            if (doCompensate) {
+                posDS.addValue(pos2Excel, "POS (Excel)", "Dopo compensazione");
+                posDS.addValue(posStarCalc, "POS (calc)", "Dopo compensazione");
+            }
 
             if (mode == SimulationMode.QUANTITY) {
                 compDS.addValue(q0, "Quantità (kg)", "Originale");
                 compDS.addValue(q1, "Quantità (kg)", "Dopo variazione");
-                compDS.addValue(q1, "Quantità (kg)", "Dopo compensazione");
 
                 compDS.addValue(p0, "P medio (€/kg)", "Originale");
                 compDS.addValue(p0, "P medio (€/kg)", "Dopo variazione");
-                compDS.addValue(compValue, "P medio (€/kg)", "Dopo compensazione");
+
+                if (doCompensate) {
+                    compDS.addValue(q1, "Quantità (kg)", "Dopo compensazione");
+                    compDS.addValue(compValue, "P medio (€/kg)", "Dopo compensazione");
+                }
             } else {
                 compDS.addValue(p0, "P medio (€/kg)", "Originale");
                 compDS.addValue(p1, "P medio (€/kg)", "Dopo variazione");
-                compDS.addValue(p1, "P medio (€/kg)", "Dopo compensazione");
 
                 compDS.addValue(q0, "Quantità (kg)", "Originale");
                 compDS.addValue(q0, "Quantità (kg)", "Dopo variazione");
-                compDS.addValue(compValue, "Quantità (kg)", "Dopo compensazione");
+
+                if (doCompensate) {
+                    compDS.addValue(p1, "P medio (€/kg)", "Dopo compensazione");
+                    compDS.addValue(compValue, "Quantità (kg)", "Dopo compensazione");
+                }
             }
 
-            JFreeChart posChart = ChartFactory.createLineChart(
+            JFreeChart posChart = ChartFactory.createBarChart(
                     "POS – " + targetArt,
                     "Scenario",
                     "POS",
                     posDS
             );
 
-            JFreeChart compChart = ChartFactory.createLineChart(
-                    "Compensazione – " + targetArt,
+            String compTitle = doCompensate ? ("Compensazione – " + targetArt) : ("Variazione – " + targetArt);
+            JFreeChart compChart = ChartFactory.createBarChart(
+                    compTitle,
                     "Scenario",
                     "Valori (Q e P)",
                     compDS
@@ -610,13 +761,15 @@ public class MainController {
                     "Δ Valore",
                     ceDeltaDS
             );
-            // ✅ delta: formato più fine (non intero)
             configureCategoryChart(ceDeltaChart, false);
             view.getChartsPanel().setCeDeltaChart(ceDeltaChart);
 
             // =========================================================
-            // 9) Salvo
+            // 9) Salvo (forza recalc prima di salvare)
             // =========================================================
+            forceExcelRecalcOnOpen(wb);
+            eval.evaluateAll();
+
             excelRepo.safeSaveWorkbook(wb);
 
         } catch (Exception ex) {
@@ -631,20 +784,67 @@ public class MainController {
     // ===========================
     private void configureCategoryChart(JFreeChart chart, boolean integerValues) {
         CategoryPlot plot = chart.getCategoryPlot();
-        LineAndShapeRenderer r = (LineAndShapeRenderer) plot.getRenderer();
 
-        r.setDefaultShapesVisible(true);
-        r.setDefaultItemLabelsVisible(true);
+        chart.setBackgroundPaint(Color.WHITE);
+        plot.setBackgroundPaint(new Color(250, 250, 250));
+        plot.setOutlineVisible(false);
+        plot.setRangeGridlinePaint(new Color(220, 220, 220));
+        plot.setDomainGridlinePaint(new Color(220, 220, 220));
+        plot.setRangeGridlinesVisible(true);
+        plot.setDomainGridlinesVisible(true);
+
+        Font axisFont = new Font("SansSerif", Font.PLAIN, 12);
+        Font tickFont = new Font(" >> ",Font.PLAIN,12);
+
+        CategoryAxis domain = plot.getDomainAxis();
+        domain.setLabelFont(axisFont);
+        domain.setTickLabelFont(tickFont);
+
+        int cols = (plot.getDataset() != null) ? plot.getDataset().getColumnCount() : 0;
+        if (cols > 4) {
+            domain.setCategoryLabelPositions(
+                    CategoryLabelPositions.createUpRotationLabelPositions(Math.PI / 8.0)
+            );
+        } else {
+            domain.setCategoryLabelPositions(CategoryLabelPositions.STANDARD);
+        }
 
         NumberFormat fmt = integerValues
                 ? new DecimalFormat("#,##0")
                 : new DecimalFormat("#,##0.000");
 
-        r.setDefaultItemLabelGenerator(new StandardCategoryItemLabelGenerator("{2}", fmt));
+        if (plot.getRangeAxis() instanceof NumberAxis) {
+            NumberAxis range = (NumberAxis) plot.getRangeAxis();
+            range.setLabelFont(axisFont);
+            range.setTickLabelFont(tickFont);
 
-        ValueAxis range = plot.getRangeAxis();
-        range.setUpperMargin(0.20);
-        range.setLowerMargin(0.10);
+            range.setNumberFormatOverride(fmt);
+            range.setAutoRangeIncludesZero(true);
+
+            if (integerValues) {
+                range.setStandardTickUnits(NumberAxis.createIntegerTickUnits());
+            }
+
+            range.setUpperMargin(0.15);
+            range.setLowerMargin(0.10);
+        }
+
+        if (plot.getRenderer() instanceof BarRenderer) {
+            BarRenderer r = (BarRenderer) plot.getRenderer();
+            r.setShadowVisible(false);
+            r.setBarPainter(new StandardBarPainter());
+            r.setDefaultItemLabelsVisible(true);
+            r.setDefaultItemLabelGenerator(new StandardCategoryItemLabelGenerator("{2}", fmt));
+            r.setDefaultItemLabelFont(new Font("SansSerif", Font.PLAIN, 11));
+        }
+
+        if (plot.getRenderer() instanceof LineAndShapeRenderer) {
+            LineAndShapeRenderer r = (LineAndShapeRenderer) plot.getRenderer();
+            r.setDefaultShapesVisible(true);
+            r.setDefaultItemLabelsVisible(true);
+            r.setDefaultItemLabelGenerator(new StandardCategoryItemLabelGenerator("{2}", fmt));
+            r.setDefaultStroke(new BasicStroke(2.0f));
+        }
     }
 
     // ===========================
@@ -770,7 +970,6 @@ public class MainController {
 
         if (cat.contains("MP")) {
             out.put(K_RICAVI_MP,   ceBase.getOrDefault(K_RICAVI_MP, 0.0) + dRicavi);
-            // ✅ come nel tuo controller “buono”
             out.put(K_ACQUISTO_MP, ceBase.getOrDefault(K_ACQUISTO_MP, 0.0) - dCosti);
         } else {
             out.put(K_RICAVI_PF, ceBase.getOrDefault(K_RICAVI_PF, 0.0) + dRicavi);
@@ -784,92 +983,96 @@ public class MainController {
         System.exit(0);
     }
 
-    // =====================================================================
-    // ✅ NUOVA FEATURE: finestra con grafico CE Budget 2022 base (fisso)
-    // - legge dall'EXCEL ORIGINALE
-    // - NON usa la working copy
-    // =====================================================================
-    private void onShowCeBudgetBase() {
+ // =====================================================================
+ // ✅ CE Budget 2022: finestra con grafico aggiornato
+ // - legge dalla WORKING COPY (quella modificata)
+ // - così il CE riflette le simulazioni appena fatte
+ // =====================================================================
+ private void onShowCeBudgetBase() {
 
-        File original = model.getOriginalExcel();
-        if (original == null || !original.exists()) {
-            JOptionPane.showMessageDialog(view, "Carica prima un file Excel.", "Attenzione", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
+     File working = model.getWorkingExcelCopy();
+     if (working == null || !working.exists()) {
+         JOptionPane.showMessageDialog(view, "Carica prima un file Excel.", "Attenzione", JOptionPane.WARNING_MESSAGE);
+         return;
+     }
 
-        try (Workbook wb = WorkbookFactory.create(original)) {
+     try (Workbook wb = WorkbookFactory.create(working)) {
 
-            Sheet ce = findCeBudgetSheet(wb);
-            if (ce == null) throw new IllegalStateException("Foglio CE Budget 2022 non trovato.");
+         Sheet ce = findCeBudgetSheet(wb);
+         if (ce == null) throw new IllegalStateException("Foglio CE Budget 2022 non trovato.");
 
-            FormulaEvaluator eval = wb.getCreationHelper().createFormulaEvaluator();
-            DataFormatter fmt = new DataFormatter();
+         FormulaEvaluator eval = wb.getCreationHelper().createFormulaEvaluator();
+         DataFormatter fmt = new DataFormatter();
 
-            LinkedHashMap<String, Double> v = new LinkedHashMap<>();
+         // ✅ Importantissimo: rivaluta le formule del file (se il CE contiene formule)
+         eval.evaluateAll();
 
-            v.put("Ricavi PF", findValueByRowLabel(ce, eval, fmt, "RICAVI DELLE VENDITE DI PRODOTTI FINITI"));
-            v.put("Ricavi MP", findValueByRowLabel(ce, eval, fmt, "RICAVI DELLE VENDITE DI MATERIE PRIME"));
-            v.put("Ricavi C/Lav.", findValueByRowLabel(ce, eval, fmt, "RICAVI CONTO LAVORAZIONE"));
-            v.put("Altri ricavi", findValueByRowLabel(ce, eval, fmt, "ALTRI RICAVI"));
-            v.put("Var. PF", findValueByRowLabel(ce, eval, fmt, "VARIAZIONE PRODOTTI FINITI"));
-            v.put("Tot. Ricavi produzione (A)", findValueByRowLabel(ce, eval, fmt, "TOTALE RICAVI PRODUZIONE"));
+         LinkedHashMap<String, Double> v = new LinkedHashMap<>();
 
-            v.put("Acquisto MP", findValueByRowLabel(ce, eval, fmt, "ACQUISTO MATERIE PRIME"));
-            v.put("Var. scorte", findValueByRowLabel(ce, eval, fmt, "VARIAZIONE SCORTE"));
-            v.put("Tot. Costi MP (B)", findValueByRowLabel(ce, eval, fmt, "TOTALE COSTI MATERIE PRIME"));
+         v.put("Ricavi PF", findValueByRowLabel(ce, eval, fmt, "RICAVI DELLE VENDITE DI PRODOTTI FINITI"));
+         v.put("Ricavi MP", findValueByRowLabel(ce, eval, fmt, "RICAVI DELLE VENDITE DI MATERIE PRIME"));
+         v.put("Ricavi C/Lav.", findValueByRowLabel(ce, eval, fmt, "RICAVI CONTO LAVORAZIONE"));
+         v.put("Altri ricavi", findValueByRowLabel(ce, eval, fmt, "ALTRI RICAVI"));
+         v.put("Var. PF", findValueByRowLabel(ce, eval, fmt, "VARIAZIONE PRODOTTI FINITI"));
+         v.put("Tot. Ricavi produzione (A)", findValueByRowLabel(ce, eval, fmt, "TOTALE RICAVI PRODUZIONE"));
 
-            v.put("Costo energia", findValueByRowLabel(ce, eval, fmt, "COSTO ENERGIA"));
-            v.put("Materiali di consumo", findValueByRowLabel(ce, eval, fmt, "MATERIALI DI CONSUMO"));
-            v.put("Pulizia/smaltimento", findValueByRowLabel(ce, eval, fmt, "PULIZIA"));
-            v.put("Tot. Costi variabili prod. (C)", findValueByRowLabel(ce, eval, fmt, "COSTI VARIABILI DI PRODUZIONE"));
+         v.put("Acquisto MP", findValueByRowLabel(ce, eval, fmt, "ACQUISTO MATERIE PRIME"));
+         v.put("Var. scorte", findValueByRowLabel(ce, eval, fmt, "VARIAZIONE SCORTE"));
+         v.put("Tot. Costi MP (B)", findValueByRowLabel(ce, eval, fmt, "TOTALE COSTI MATERIE PRIME"));
 
-            v.put("Trasporti/oneri vendita+acquisto", findValueByRowLabel(ce, eval, fmt, "TRASPORTI"));
-            v.put("Provvigioni/Enasarco", findValueByRowLabel(ce, eval, fmt, "PROVVIGIONI"));
-            v.put("Tot. Costi di vendita (D)", findValueByRowLabel(ce, eval, fmt, "TOTALE COSTI DI VENDITA"));
+         v.put("Costo energia", findValueByRowLabel(ce, eval, fmt, "COSTO ENERGIA"));
+         v.put("Materiali di consumo", findValueByRowLabel(ce, eval, fmt, "MATERIALI DI CONSUMO"));
+         v.put("Pulizia/smaltimento", findValueByRowLabel(ce, eval, fmt, "PULIZIA"));
+         v.put("Tot. Costi variabili prod. (C)", findValueByRowLabel(ce, eval, fmt, "COSTI VARIABILI DI PRODUZIONE"));
 
-            v.put("MOL (A-B-C-D)", findValueByRowLabel(ce, eval, fmt, "MARGINE OPERATIVO LORDO"));
+         v.put("Trasporti/oneri vendita+acquisto", findValueByRowLabel(ce, eval, fmt, "TRASPORTI"));
+         v.put("Provvigioni/Enasarco", findValueByRowLabel(ce, eval, fmt, "PROVVIGIONI"));
+         v.put("Tot. Costi di vendita (D)", findValueByRowLabel(ce, eval, fmt, "TOTALE COSTI DI VENDITA"));
 
-            DefaultCategoryDataset ds = new DefaultCategoryDataset();
-            for (Map.Entry<String, Double> e : v.entrySet()) {
-                ds.addValue(e.getValue(), "CE Budget 2022 (base)", e.getKey());
-            }
+         v.put("MOL (A-B-C-D)", findValueByRowLabel(ce, eval, fmt, "MARGINE OPERATIVO LORDO"));
 
-            JFreeChart chart = ChartFactory.createLineChart(
-                    "CE Budget 2022 – Base (Excel originale)",
-                    "Voce",
-                    "Valore",
-                    ds,
-                    PlotOrientation.VERTICAL,
-                    true,
-                    true,
-                    false
-            );
-            configureCategoryChart(chart, true);
+         DefaultCategoryDataset ds = new DefaultCategoryDataset();
+         for (Map.Entry<String, Double> e : v.entrySet()) {
+             ds.addValue(e.getValue(), "CE Budget 2022 (working copy)", e.getKey());
+         }
 
-            CeBudgetFrame ceFrame = new CeBudgetFrame();
-            ceFrame.setChart(chart);
+         JFreeChart chart = ChartFactory.createLineChart(
+                 "CE Budget 2022 – Aggiornato (Working copy)",
+                 "Voce",
+                 "Valore",
+                 ds,
+                 PlotOrientation.VERTICAL,
+                 true,
+                 true,
+                 false
+         );
+         configureCategoryChart(chart, true);
 
-            view.setVisible(false);
+         CeBudgetFrame ceFrame = new CeBudgetFrame();
+         ceFrame.setChart(chart);
 
-            ceFrame.getBtnBack().addActionListener(ev -> {
-                ceFrame.dispose();
-                view.setVisible(true);
-            });
+         view.setVisible(false);
 
-            ceFrame.addWindowListener(new java.awt.event.WindowAdapter() {
-                @Override
-                public void windowClosed(java.awt.event.WindowEvent e) {
-                    view.setVisible(true);
-                }
-            });
+         ceFrame.getBtnBack().addActionListener(ev -> {
+             ceFrame.dispose();
+             view.setVisible(true);
+         });
 
-            ceFrame.setVisible(true);
+         ceFrame.addWindowListener(new java.awt.event.WindowAdapter() {
+             @Override
+             public void windowClosed(java.awt.event.WindowEvent e) {
+                 view.setVisible(true);
+             }
+         });
 
-        } catch (Exception ex) {
-            log.error("Errore apertura CE Budget base", ex);
-            JOptionPane.showMessageDialog(view, "Errore: " + ex.getMessage(), "Errore", JOptionPane.ERROR_MESSAGE);
-        }
-    }
+         ceFrame.setVisible(true);
+
+     } catch (Exception ex) {
+         log.error("Errore apertura CE Budget (working copy)", ex);
+         JOptionPane.showMessageDialog(view, "Errore: " + ex.getMessage(), "Errore", JOptionPane.ERROR_MESSAGE);
+     }
+ }
+
 
     private double findValueByRowLabel(Sheet sh, FormulaEvaluator eval, DataFormatter fmt, String labelNeedle) {
 

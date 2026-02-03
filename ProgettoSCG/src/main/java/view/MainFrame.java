@@ -14,9 +14,9 @@ public class MainFrame extends JFrame {
     private JButton btnShowCeBudget;
     private JButton btnResetExcel;
 
-
     private JLabel lblStatus;
     private JLabel lblFileName;
+
     private JButton btnShowPremioComp;
     private SimulationControlsPanel controlsPanel;
     private ChartsPanel chartsPanel;
@@ -57,33 +57,28 @@ public class MainFrame extends JFrame {
         statusLeft.add(lblFileName, BorderLayout.CENTER);
 
         JPanel statusRight = new JPanel();
+
         btnLoadExcel = new JButton("Carica Excel");
         btnExit = new JButton("Esci");
+
         btnOpenWorkingCopy = new JButton("Apri copia");
         btnOpenWorkingCopy.setEnabled(false);
 
-        // ✅ nuovo bottone CE base
         btnShowCeBudget = new JButton("CE Budget 2022");
         btnShowCeBudget.setEnabled(false);
-        
-        
-     // ...
+
         btnShowPremioComp = new JButton("Compensa Premio");
         btnShowPremioComp.setEnabled(false);
 
-        // ✅ nuovo bottone RESET
         btnResetExcel = new JButton("Reset Excel");
         btnResetExcel.setEnabled(false);
 
-        // ATTENZIONE: qui avevi due volte btnShowPremioComp
         statusRight.add(btnShowPremioComp);
         statusRight.add(btnLoadExcel);
         statusRight.add(btnOpenWorkingCopy);
-        statusRight.add(btnResetExcel);      // ✅ qui
+        statusRight.add(btnResetExcel);
         statusRight.add(btnShowCeBudget);
-        statusRight.add(btnExit);
-        // ...
-        statusRight.add(btnExit);
+        statusRight.add(btnExit); // ✅ UNA SOLA VOLTA
 
         status.add(statusLeft, BorderLayout.CENTER);
         status.add(statusRight, BorderLayout.EAST);
@@ -98,22 +93,30 @@ public class MainFrame extends JFrame {
         chartsPanel = new ChartsPanel();
 
         JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, controlsPanel, chartsPanel);
-        split.setResizeWeight(0.28);
-        split.setDividerSize(8);
+        split.setDividerSize(10);
+
+        // ✅ pannello sinistro più largo (controlli + dettagli)
+        final int leftWidth = 520;
+        controlsPanel.setPreferredSize(new Dimension(leftWidth, 0));
+        controlsPanel.setMinimumSize(new Dimension(480, 0));
+
+        // ✅ lascia più spazio ai grafici ma non schiaccia i dettagli
+        split.setResizeWeight(0.40);
+
+        // ✅ divider location fatto nel momento giusto
+        SwingUtilities.invokeLater(() -> split.setDividerLocation(leftWidth));
 
         add(top, BorderLayout.NORTH);
         add(split, BorderLayout.CENTER);
 
         setExcelNotLoaded();
     }
-    
+
     public JButton getBtnResetExcel() { return btnResetExcel; }
     public JButton getBtnShowPremioComp() { return btnShowPremioComp; }
     public JButton getBtnLoadExcel() { return btnLoadExcel; }
     public JButton getBtnExit() { return btnExit; }
     public JButton getBtnOpenWorkingCopy() { return btnOpenWorkingCopy; }
-
-    // ✅ getter nuovo
     public JButton getBtnShowCeBudget() { return btnShowCeBudget; }
 
     public SimulationControlsPanel getControlsPanel() { return controlsPanel; }
@@ -125,7 +128,7 @@ public class MainFrame extends JFrame {
         btnOpenWorkingCopy.setEnabled(true);
         btnShowCeBudget.setEnabled(true);
         btnShowPremioComp.setEnabled(true);
-        btnResetExcel.setEnabled(true);     // ✅
+        btnResetExcel.setEnabled(true);
     }
 
     public void setExcelNotLoaded() {
@@ -134,8 +137,6 @@ public class MainFrame extends JFrame {
         btnOpenWorkingCopy.setEnabled(false);
         btnShowCeBudget.setEnabled(false);
         btnShowPremioComp.setEnabled(false);
-        btnResetExcel.setEnabled(false);    // ✅
+        btnResetExcel.setEnabled(false);
     }
-
-
 }

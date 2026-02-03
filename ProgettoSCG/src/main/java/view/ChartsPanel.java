@@ -8,6 +8,8 @@ import org.jfree.chart.JFreeChart;
 
 public class ChartsPanel extends JPanel {
 
+    private static final boolean SHOW_CE_CHARTS = false; // bozza: mostra solo 2 grafici (POS + Comp)
+
     private final ChartPanel posChartPanel;
     private final ChartPanel compChartPanel;
 
@@ -20,7 +22,7 @@ public class ChartsPanel extends JPanel {
         setLayout(new BorderLayout());
 
         JPanel inner = new JPanel();
-        inner.setLayout(new GridLayout(5, 1, 0, 8));
+        inner.setLayout(new GridLayout(SHOW_CE_CHARTS ? 5 : 2, 1, 0, 8));
         inner.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
         posChartPanel = new ChartPanel(null, false);
@@ -36,13 +38,15 @@ public class ChartsPanel extends JPanel {
         setupPanel(ceVarChartPanel);
         setupPanel(ceDeltaChartPanel);
 
-        inner.add(posChartPanel);
+                inner.add(posChartPanel);
         inner.add(compChartPanel);
-        inner.add(ceBaseChartPanel);
-        inner.add(ceVarChartPanel);
-        inner.add(ceDeltaChartPanel);
 
-        JScrollPane sp = new JScrollPane(inner);
+        if (SHOW_CE_CHARTS) {
+            inner.add(ceBaseChartPanel);
+            inner.add(ceVarChartPanel);
+            inner.add(ceDeltaChartPanel);
+        }
+JScrollPane sp = new JScrollPane(inner);
         sp.setBorder(null);
         sp.getVerticalScrollBar().setUnitIncrement(16);
 
@@ -51,7 +55,22 @@ public class ChartsPanel extends JPanel {
 
     private void setupPanel(ChartPanel cp) {
         cp.setPreferredSize(new Dimension(1000, 260));
-        cp.setMouseWheelEnabled(true);
+
+        // NIENTE zoom (né wheel né drag)
+        cp.setMouseWheelEnabled(false);
+        cp.setMouseZoomable(false);
+        cp.setDomainZoomable(false);
+        cp.setRangeZoomable(false);
+
+        // niente menu contestuale in demo
+        cp.setPopupMenu(null);
+
+        // look più pulito
+        cp.setOpaque(true);
+        cp.setBackground(Color.WHITE);
+        cp.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+
+        // evita limiti strani in resize
         cp.setMinimumDrawWidth(0);
         cp.setMinimumDrawHeight(0);
     }
