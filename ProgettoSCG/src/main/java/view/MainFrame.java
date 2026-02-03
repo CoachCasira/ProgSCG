@@ -3,7 +3,6 @@ package view;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.Font;
-
 import javax.swing.*;
 
 public class MainFrame extends JFrame {
@@ -17,7 +16,6 @@ public class MainFrame extends JFrame {
     private JLabel lblStatus;
     private JLabel lblFileName;
 
-    private JButton btnShowPremioComp;
     private SimulationControlsPanel controlsPanel;
     private ChartsPanel chartsPanel;
 
@@ -59,26 +57,23 @@ public class MainFrame extends JFrame {
         JPanel statusRight = new JPanel();
 
         btnLoadExcel = new JButton("Carica Excel");
-        btnExit = new JButton("Esci");
-
         btnOpenWorkingCopy = new JButton("Apri copia");
         btnOpenWorkingCopy.setEnabled(false);
-
-        btnShowCeBudget = new JButton("CE Budget 2022");
-        btnShowCeBudget.setEnabled(false);
-
-        btnShowPremioComp = new JButton("Compensa Premio");
-        btnShowPremioComp.setEnabled(false);
 
         btnResetExcel = new JButton("Reset Excel");
         btnResetExcel.setEnabled(false);
 
-        statusRight.add(btnShowPremioComp);
+        btnShowCeBudget = new JButton("CE Budget 2022");
+        btnShowCeBudget.setEnabled(false);
+
+        btnExit = new JButton("Esci");
+
+        // ✅ qui NON c'è più "Compensa Premio"
         statusRight.add(btnLoadExcel);
         statusRight.add(btnOpenWorkingCopy);
         statusRight.add(btnResetExcel);
         statusRight.add(btnShowCeBudget);
-        statusRight.add(btnExit); // ✅ UNA SOLA VOLTA
+        statusRight.add(btnExit);
 
         status.add(statusLeft, BorderLayout.CENTER);
         status.add(statusRight, BorderLayout.EAST);
@@ -93,18 +88,14 @@ public class MainFrame extends JFrame {
         chartsPanel = new ChartsPanel();
 
         JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, controlsPanel, chartsPanel);
-        split.setDividerSize(10);
 
-        // ✅ pannello sinistro più largo (controlli + dettagli)
-        final int leftWidth = 520;
-        controlsPanel.setPreferredSize(new Dimension(leftWidth, 0));
-        controlsPanel.setMinimumSize(new Dimension(480, 0));
+        // pannello sinistro più largo di default
+        controlsPanel.setPreferredSize(new Dimension(700, 0));
+        controlsPanel.setMinimumSize(new Dimension(700, 0));
 
-        // ✅ lascia più spazio ai grafici ma non schiaccia i dettagli
-        split.setResizeWeight(0.40);
-
-        // ✅ divider location fatto nel momento giusto
-        SwingUtilities.invokeLater(() -> split.setDividerLocation(leftWidth));
+        split.setResizeWeight(0.60);
+        split.setDividerSize(20);
+        split.setDividerLocation(430);
 
         add(top, BorderLayout.NORTH);
         add(split, BorderLayout.CENTER);
@@ -113,7 +104,6 @@ public class MainFrame extends JFrame {
     }
 
     public JButton getBtnResetExcel() { return btnResetExcel; }
-    public JButton getBtnShowPremioComp() { return btnShowPremioComp; }
     public JButton getBtnLoadExcel() { return btnLoadExcel; }
     public JButton getBtnExit() { return btnExit; }
     public JButton getBtnOpenWorkingCopy() { return btnOpenWorkingCopy; }
@@ -125,18 +115,18 @@ public class MainFrame extends JFrame {
     public void setExcelLoaded(String fileName) {
         lblStatus.setText("Excel caricato");
         lblFileName.setText("File: " + fileName);
+
         btnOpenWorkingCopy.setEnabled(true);
         btnShowCeBudget.setEnabled(true);
-        btnShowPremioComp.setEnabled(true);
         btnResetExcel.setEnabled(true);
     }
 
     public void setExcelNotLoaded() {
         lblStatus.setText("Excel non caricato");
         lblFileName.setText("Seleziona un file .xlsx per iniziare");
+
         btnOpenWorkingCopy.setEnabled(false);
         btnShowCeBudget.setEnabled(false);
-        btnShowPremioComp.setEnabled(false);
         btnResetExcel.setEnabled(false);
     }
 }

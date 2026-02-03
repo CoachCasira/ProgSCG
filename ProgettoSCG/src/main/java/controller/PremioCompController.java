@@ -52,6 +52,15 @@ public class PremioCompController {
     private static final DecimalFormat DF_INT = new DecimalFormat("#,##0");
     private static final DecimalFormat DF_3   = new DecimalFormat("#,##0.000");
     private static final DecimalFormat DF_2   = new DecimalFormat("#,##0.00");
+    
+    private static String rowHtml(String k, String v) {
+        String key = (k == null) ? "" : k;
+        String val = (v == null) ? "" : v;
+        return "<tr>" +
+                "<td style='padding:4px 8px;border-top:1px solid #eee;color:#333;white-space:nowrap;'><b>" + key + "</b></td>" +
+                "<td style='padding:4px 8px;border-top:1px solid #eee;color:#111;text-align:right;'>" + val + "</td>" +
+                "</tr>";
+    }
 
     // ===========================
     // RIFERIMENTI FOGLIO "Ricavi"
@@ -391,47 +400,67 @@ public class PremioCompController {
             // POS totale dopo compensazione: per costruzione torna a totPos0
             double totPos2_calc = totPos1_calc + (x66_star1 - x66_0);
 
-            // =========================================================
-            // 6) Dettagli
-            // =========================================================
-            String whatChanged = (mode == SimulationMode.QUANTITY) ? "Quantità (kg)" : "Prezzo (€/kg)";
+         // =========================================================
+         // 6) Dettagli (HTML coerente con Main)
+         // =========================================================
+         String whatChanged = (mode == SimulationMode.QUANTITY) ? "Quantità (kg)" : "Prezzo (€/kg)";
 
-            StringBuilder sb = new StringBuilder();
-            sb.append("Articolo: ").append(targetArt).append(" [").append(targetCat).append("]\n");
-            sb.append("Percentuale applicata: ").append(DF_2.format(percent)).append("%\n\n");
+         StringBuilder html = new StringBuilder();
+         html.append("<html><body style='font-family:SansSerif;font-size:12px;'>");
 
-            sb.append("Valori originali:\n");
-            sb.append("  Q0 = ").append(DF_INT.format(q0)).append(" kg\n");
-            sb.append("  P0 = ").append(DF_3.format(p0)).append(" €/kg\n");
-            sb.append("  CMP0 = ").append(DF_3.format(cmp0)).append(" €/kg\n");
-            sb.append("  Premio mensile (Q66) = ").append(DF_INT.format(premioMens0)).append("\n");
-            sb.append("  Mensilità (P66) = ").append(DF_INT.format(months)).append("\n");
-            sb.append("  Premio annuo (W66) = ").append(DF_INT.format(premioAnn0)).append("\n");
-            sb.append("  Premio in somma (X66) = ").append(DF_INT.format(x66_0)).append("\n");
-            sb.append("  POS riga (baseline) = ").append(DF_INT.format(posRow0)).append("\n");
-            sb.append("  POS TOTALE (baseline) = ").append(DF_INT.format(totPos0)).append("\n\n");
+         html.append("<div style='font-size:13px;'><b>Articolo:</b> ").append(targetArt)
+                 .append(" <span style='color:#666;'>[").append(targetCat).append("]</span></div>");
+         html.append("<div><b>Percentuale applicata:</b> ").append(DF_2.format(percent)).append("%</div>");
+         html.append("<hr style='border:none;border-top:1px solid #ddd;margin:10px 0;' />");
 
-            sb.append("Step 1 — Dopo variazione (premio invariato):\n");
-            sb.append("  Leva modificata: ").append(whatChanged).append("\n");
-            sb.append("  Q1 = ").append(DF_INT.format(q1)).append(" kg\n");
-            sb.append("  P1 = ").append(DF_3.format(p1)).append(" €/kg\n");
-            sb.append("  Premio mensile invariato (Q66) = ").append(DF_INT.format(premioMens0)).append("\n");
-            sb.append("  POS riga (calcolato) = ").append(DF_INT.format(posRow1_calc)).append("\n");
-            sb.append("  POS TOTALE (calcolato) = ").append(DF_INT.format(totPos1_calc)).append("\n\n");
+         // --- Valori originali
+         html.append("<div style='margin-bottom:6px;'><b>Valori originali</b></div>");
+         html.append("<table style='border-collapse:collapse;width:100%;'>");
+         html.append(rowHtml("Q0", DF_INT.format(q0) + " kg"));
+         html.append(rowHtml("P0", DF_3.format(p0) + " €/kg"));
+         html.append(rowHtml("CMP0", DF_3.format(cmp0) + " €/kg"));
+         html.append(rowHtml("POS riga (baseline)", DF_INT.format(posRow0)));
+         html.append(rowHtml("POS TOTALE (baseline)", DF_INT.format(totPos0)));
+         html.append(rowHtml("Premio mensile Q66", DF_INT.format(premioMens0)));
+         html.append(rowHtml("Mensilità P66", DF_INT.format(months)));
+         html.append(rowHtml("Premio annuo W66", DF_INT.format(premioAnn0)));
+         html.append(rowHtml("Premio in somma X66", DF_INT.format(x66_0)));
+         html.append("</table>");
 
-            sb.append("Step 2 — Compensazione PREMIO per mantenere POS TOTALE costante:\n");
-            sb.append("  Target: POS TOTALE = ").append(DF_INT.format(totPos0)).append("\n");
-            sb.append("  Premio mensile* (Q66) = ").append(DF_INT.format(premioMensStar)).append("\n");
-            sb.append("  Premio annuo* (W66) = ").append(DF_INT.format(premioAnnStar)).append("\n");
-            sb.append("  Premio in somma* (X66) = ").append(DF_INT.format(x66_star1)).append("\n");
-            double deltaPremioPct = (premioMens0 == 0) ? 0 : ((premioMensStar / premioMens0) - 1.0) * 100.0;
-            sb.append("  ΔPremio% = ").append(DF_2.format(deltaPremioPct)).append("%\n\n");
+         // --- Step 1
+         html.append("<hr style='border:none;border-top:1px solid #eee;margin:10px 0;' />");
+         html.append("<div style='margin-bottom:6px;'><b>Step 1 — Dopo variazione</b> <span style='color:#666;'>(premio invariato)</span></div>");
+         html.append("<table style='border-collapse:collapse;width:100%;'>");
+         html.append(rowHtml("Leva modificata", whatChanged));
+         html.append(rowHtml("Q1", DF_INT.format(q1) + " kg"));
+         html.append(rowHtml("P1", DF_3.format(p1) + " €/kg"));
+         html.append(rowHtml("POS riga (calcolato)", DF_INT.format(posRow1_calc)));
+         html.append(rowHtml("POS TOTALE (calcolato)", DF_INT.format(totPos1_calc)));
+         html.append("</table>");
 
-            sb.append("Check finale:\n");
-            sb.append("  POS TOTALE dopo compensazione (calcolato) = ").append(DF_INT.format(totPos2_calc)).append("\n");
-            sb.append("  Errore |totPos2 - totPos0| = ").append(DF_INT.format(Math.abs(totPos2_calc - totPos0))).append("\n");
+         // --- Step 2
+         html.append("<hr style='border:none;border-top:1px solid #eee;margin:10px 0;' />");
+         html.append("<div style='margin-bottom:6px;'><b>Step 2 — Compensazione PREMIO</b> <span style='color:#666;'>(mantieni POS TOTALE costante)</span></div>");
+         html.append("<table style='border-collapse:collapse;width:100%;'>");
+         html.append(rowHtml("Target POS TOTALE", DF_INT.format(totPos0)));
+         html.append(rowHtml("Premio mensile* Q66", DF_INT.format(premioMensStar)));
+         html.append(rowHtml("Premio annuo* W66", DF_INT.format(premioAnnStar)));
+         html.append(rowHtml("Premio in somma* X66", DF_INT.format(x66_star1)));
+         double deltaPremioPct = (premioMens0 == 0) ? 0 : ((premioMensStar / premioMens0) - 1.0) * 100.0;
+         html.append(rowHtml("Δ Premio %", DF_2.format(deltaPremioPct) + "%"));
+         html.append("</table>");
 
-            premioView.getControlsPanel().setDetails(sb.toString());
+         // --- Check finale
+         html.append("<hr style='border:none;border-top:1px solid #eee;margin:10px 0;' />");
+         html.append("<div style='margin-bottom:6px;'><b>Check finale</b></div>");
+         html.append("<table style='border-collapse:collapse;width:100%;'>");
+         html.append(rowHtml("POS TOTALE dopo compensazione (calc)", DF_INT.format(totPos2_calc)));
+         html.append(rowHtml("Errore |totPos2 - totPos0|", DF_INT.format(Math.abs(totPos2_calc - totPos0))));
+         html.append("</table>");
+
+         html.append("</body></html>");
+
+         premioView.getControlsPanel().setDetails(html.toString());
 
             // =========================================================
             // 7) Grafico POS totale (usa valori calcolati)
@@ -450,37 +479,71 @@ public class PremioCompController {
             configureCategoryChart(posChart, true);
             premioView.setPosChart(posChart);
 
-            // =========================================================
-            // 8) Grafico Leva + Premio
-            // =========================================================
-            DefaultCategoryDataset premioDS = new DefaultCategoryDataset();
+         // =========================================================
+         // 8) Grafico Leva + Premio (CORRETTO: Bar + Line su asse destro)
+         // - Barre (asse sx): Leva (Q oppure P)
+         // - Linee (asse dx): Premio mensile + Premio annuo
+         // =========================================================
+         DefaultCategoryDataset levaDS = new DefaultCategoryDataset();
+         DefaultCategoryDataset premioDS = new DefaultCategoryDataset();
 
-            if (mode == SimulationMode.QUANTITY) {
-                premioDS.addValue(q0, "Quantità (kg)", "Originale");
-                premioDS.addValue(q1, "Quantità (kg)", "Dopo variazione");
-                premioDS.addValue(q1, "Quantità (kg)", "Dopo compensazione");
-            } else {
-                premioDS.addValue(p0, "P medio (€/kg)", "Originale");
-                premioDS.addValue(p1, "P medio (€/kg)", "Dopo variazione");
-                premioDS.addValue(p1, "P medio (€/kg)", "Dopo compensazione");
-            }
+         if (mode == SimulationMode.QUANTITY) {
+             levaDS.addValue(q0, "Quantità (kg)", "Originale");
+             levaDS.addValue(q1, "Quantità (kg)", "Dopo variazione");
+             levaDS.addValue(q1, "Quantità (kg)", "Dopo compensazione");
+         } else {
+             levaDS.addValue(p0, "P medio (€/kg)", "Originale");
+             levaDS.addValue(p1, "P medio (€/kg)", "Dopo variazione");
+             levaDS.addValue(p1, "P medio (€/kg)", "Dopo compensazione");
+         }
 
-            premioDS.addValue(premioMens0,    "Premio mensile (Q66)", "Originale");
-            premioDS.addValue(premioMens0,    "Premio mensile (Q66)", "Dopo variazione");
-            premioDS.addValue(premioMensStar, "Premio mensile (Q66)", "Dopo compensazione");
+         // Premio (asse destro)
+         premioDS.addValue(premioMens0,    "Premio mensile (Q66)", "Originale");
+         premioDS.addValue(premioMens0,    "Premio mensile (Q66)", "Dopo variazione");
+         premioDS.addValue(premioMensStar, "Premio mensile (Q66)", "Dopo compensazione");
 
-            premioDS.addValue(premioAnn0,     "Premio annuo (W66)", "Originale");
-            premioDS.addValue(premioAnn0,     "Premio annuo (W66)", "Dopo variazione");
-            premioDS.addValue(premioAnnStar,  "Premio annuo (W66)", "Dopo compensazione");
+         premioDS.addValue(premioAnn0,     "Premio annuo (W66)", "Originale");
+         premioDS.addValue(premioAnn0,     "Premio annuo (W66)", "Dopo variazione");
+         premioDS.addValue(premioAnnStar,  "Premio annuo (W66)", "Dopo compensazione");
 
-            JFreeChart premioChart = ChartFactory.createBarChart(
-                    "Leva + Premio – " + targetArt,
-                    "Scenario",
-                    "Valore",
-                    premioDS
-            );
-            configureCategoryChart(premioChart, false);
-            premioView.setPremioChart(premioChart);
+         // Base chart: BAR per la leva
+         String yLabelLeva = (mode == SimulationMode.QUANTITY) ? "Quantità (kg)" : "Prezzo (€/kg)";
+         JFreeChart premioChart = ChartFactory.createBarChart(
+                 "Leva + Premio – " + targetArt,
+                 "Scenario",
+                 yLabelLeva,
+                 levaDS
+         );
+
+         CategoryPlot plot = premioChart.getCategoryPlot();
+
+         // dataset 2 su asse destro
+         plot.setDataset(1, premioDS);
+
+         NumberAxis axis2 = new NumberAxis("Premio");
+         axis2.setAutoRangeIncludesZero(true);
+         plot.setRangeAxis(1, axis2);
+         plot.mapDatasetToRangeAxis(1, 1);
+
+         // renderer 2: LINEE per evitare barre sovrapposte
+         LineAndShapeRenderer r2 = new LineAndShapeRenderer(true, true);
+         r2.setDefaultShapesVisible(true);
+         r2.setDefaultItemLabelsVisible(true);
+         r2.setDefaultItemLabelGenerator(
+                 new StandardCategoryItemLabelGenerator("{2}", new DecimalFormat("#,##0"))
+         );
+         r2.setDefaultStroke(new BasicStroke(2.0f));
+         plot.setRenderer(1, r2);
+
+         // ordine rendering: prima barre, poi linee sopra
+         plot.setDatasetRenderingOrder(org.jfree.chart.plot.DatasetRenderingOrder.FORWARD);
+
+         // stile generale (griglia, font, label ecc.)
+         configureCategoryChart(premioChart, false);
+
+         premioView.setPremioChart(premioChart);
+
+
 
             // =========================================================
             // 9) Salva
