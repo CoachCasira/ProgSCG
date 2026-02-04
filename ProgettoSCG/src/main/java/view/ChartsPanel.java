@@ -92,7 +92,7 @@ public class ChartsPanel extends JPanel {
     }
 
     // ============================================================
-    // CE charts: NO-OP (non vuoi la tab CE qui)
+    // CE charts: NO-OP
     // ============================================================
 
     public void setCeBaseChart(JFreeChart chart) { /* NO-OP */ }
@@ -162,24 +162,23 @@ public class ChartsPanel extends JPanel {
     }
 
     /**
-     * UI tab: due grafici in verticale.
-     * Ogni grafico è dentro uno JScrollPane con H-scroll AS_NEEDED
-     * così su schermi piccoli puoi scorrere sx↔dx.
+     * Tab con 2 grafici verticali.
+     * Ogni grafico: JScrollPane con H+V AS_NEEDED.
      */
     private JComponent buildTabUI(ArticleTab tab) {
         JPanel inner = new JPanel();
         inner.setLayout(new BoxLayout(inner, BoxLayout.Y_AXIS));
         inner.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        tab.posChartPanel = new ChartPanel(null, false);
-        tab.compChartPanel = new ChartPanel(null, false);
+        tab.posChartPanel = new ScrollableChartPanel(null);
+        tab.compChartPanel = new ScrollableChartPanel(null);
 
         setupChartPanel(tab.posChartPanel);
         setupChartPanel(tab.compChartPanel);
 
-        inner.add(wrapChartWithTitleAndHScroll("POS", tab.posChartPanel));
+        inner.add(wrapChartWithTitleAndScroll("POS", tab.posChartPanel));
         inner.add(Box.createVerticalStrut(10));
-        inner.add(wrapChartWithTitleAndHScroll("Variazione (Quantità / Prezzo)", tab.compChartPanel));
+        inner.add(wrapChartWithTitleAndScroll("Variazione (Quantità / Prezzo)", tab.compChartPanel));
 
         JScrollPane sp = new JScrollPane(inner,
                 ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,
@@ -191,31 +190,31 @@ public class ChartsPanel extends JPanel {
     }
 
     /**
-     * Wrapper con titolo + scroll ORIZZONTALE sul grafico.
-     * Nota: per far comparire la scrollbar, il ChartPanel deve avere preferredWidth
-     * maggiore della viewport (lo facciamo in setupChartPanel).
+     * Wrapper: titolo + scroll X/Y sul grafico.
      */
-    private JComponent wrapChartWithTitleAndHScroll(String title, ChartPanel chartPanel) {
+    private JComponent wrapChartWithTitleAndScroll(String title, ChartPanel chartPanel) {
         JPanel outer = new JPanel(new BorderLayout());
         outer.setBorder(BorderFactory.createTitledBorder(title));
 
-        JScrollPane hScroll = new JScrollPane(chartPanel,
-                ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER,
+        JScrollPane scroll = new JScrollPane(chartPanel,
+                ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
                 ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
 
-        // scorrimento più “fluido”
-        hScroll.getHorizontalScrollBar().setUnitIncrement(20);
+        // scorrimento più fluido
+        scroll.getHorizontalScrollBar().setUnitIncrement(20);
+        scroll.getVerticalScrollBar().setUnitIncrement(16);
 
-        // evita bordo doppio
-        hScroll.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+        // padding interno pulito
+        scroll.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
 
-        outer.add(hScroll, BorderLayout.CENTER);
+        outer.add(scroll, BorderLayout.CENTER);
         return outer;
     }
 
     private void setupChartPanel(ChartPanel cp) {
-        // ✅ width più grande della viewport -> appare scroll orizzontale su laptop
-        cp.setPreferredSize(new Dimension(1400, 320));
+        // ✅ più grande della viewport -> scrollbar sempre disponibili su laptop
+        cp.setPreferredSize(new Dimension(1600, 520));
+        cp.setMinimumSize(new Dimension(1200, 420));
 
         // niente zoom / menu
         cp.setMouseWheelEnabled(false);
@@ -224,13 +223,46 @@ public class ChartsPanel extends JPanel {
         cp.setRangeZoomable(false);
         cp.setPopupMenu(null);
 
-        // look pulito
         cp.setOpaque(true);
         cp.setBackground(Color.WHITE);
 
-        // evita limiti strani in resize
         cp.setMinimumDrawWidth(0);
         cp.setMinimumDrawHeight(0);
+    }
+
+    /**
+     * 🔥 Fix vero: ChartPanel “scrollabile” che NON si adatta alla viewport.
+     * Se tracka la viewport -> le scrollbar non compaiono mai.
+     */
+    private static class ScrollableChartPanel extends ChartPanel implements Scrollable {
+        public ScrollableChartPanel(JFreeChart chart) {
+            super(chart, false);
+        }
+
+        @Override
+        public Dimension getPreferredScrollableViewportSize() {
+            return new Dimension(900, 320);
+        }
+
+        @Override
+        public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return (orientation == SwingConstants.HORIZONTAL) ? 20 : 16;
+        }
+
+        @Override
+        public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return (orientation == SwingConstants.HORIZONTAL) ? 200 : 120;
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportWidth() {
+            return false; // ✅ fondamentale
+        }
+
+        @Override
+        public boolean getScrollableTracksViewportHeight() {
+            return false; // ✅ fondamentale
+        }
     }
 
     private static class ArticleTab {
