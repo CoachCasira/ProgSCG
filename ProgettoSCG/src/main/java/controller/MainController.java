@@ -444,9 +444,14 @@ public class MainController {
             double cmp0 = ricaviService.readNumeric(ricaviSheet, eval, rowIdx, colCMPeur);
             double pos0Excel = ricaviService.readNumeric(ricaviSheet, eval, rowIdx, colPos);
 
-            if (q0 <= 0 || p0 <= 0 || cmp0 <= 0) {
-                throw new IllegalStateException("Valori base non validi per " + art + " (Q/P/CMP).");
+            if (!(q0 > 0)) throw new IllegalStateException("Q0 non valida letta da Excel: " + q0);
+            if (!(p0 > 0)) throw new IllegalStateException("P0 (€/kg) non valido letto da Excel: " + p0);
+
+            // CMP può essere 0 (trattino nel file). Vietato solo <0 o NaN.
+            if (Double.isNaN(cmp0) || cmp0 < 0) {
+                throw new IllegalStateException("CMP0 (€/kg) non valido letto da Excel: " + cmp0);
             }
+
 
             Base b = new Base();
             b.rowIdx = rowIdx;
@@ -646,7 +651,11 @@ public class MainController {
             );
 
             configureCategoryChart(posChart, true);
+            applySeriesLabelFormatting(posChart);
+
             configureCategoryChart(compChart, false);
+            applySeriesLabelFormatting(compChart);
+
 
             // tabKey stabile: cat||art
             view.getChartsPanel().addOrReplaceArticleCharts(key, art, posChart, compChart);
@@ -670,70 +679,137 @@ public class MainController {
     // ===========================
     // Chart config
     // ===========================
-    private void configureCategoryChart(JFreeChart chart, boolean integerValues) {
-        CategoryPlot plot = chart.getCategoryPlot();
+   private void configureCategoryChart(JFreeChart chart, boolean integerValues) {
+    CategoryPlot plot = chart.getCategoryPlot();
 
-        chart.setBackgroundPaint(Color.WHITE);
-        plot.setBackgroundPaint(new Color(250, 250, 250));
-        plot.setOutlineVisible(false);
-        plot.setRangeGridlinePaint(new Color(220, 220, 220));
-        plot.setDomainGridlinePaint(new Color(220, 220, 220));
-        plot.setRangeGridlinesVisible(true);
-        plot.setDomainGridlinesVisible(true);
+    // --- estetica base
+    chart.setBackgroundPaint(Color.WHITE);
+    plot.setBackgroundPaint(new Color(250, 250, 250));
+    plot.setOutlineVisible(false);
+    plot.setRangeGridlinePaint(new Color(220, 220, 220));
+    plot.setDomainGridlinePaint(new Color(220, 220, 220));
+    plot.setRangeGridlinesVisible(true);
+    plot.setDomainGridlinesVisible(true);
 
-        Font axisFont = new Font("SansSerif", Font.PLAIN, 12);
-        Font tickFont = new Font(" >> ",Font.PLAIN,12);
+    // --- font
+    Font axisFont = new Font("SansSerif", Font.PLAIN, 12);
+    Font tickFont = new Font("SansSerif", Font.PLAIN, 11);
 
-        CategoryAxis domain = plot.getDomainAxis();
-        domain.setLabelFont(axisFont);
-        domain.setTickLabelFont(tickFont);
+    CategoryAxis domain = plot.getDomainAxis();
+    domain.setLabelFont(axisFont);
+    domain.setTickLabelFont(tickFont);
 
-        int cols = (plot.getDataset() != null) ? plot.getDataset().getColumnCount() : 0;
-        if (cols > 4) {
-            domain.setCategoryLabelPositions(
-                    CategoryLabelPositions.createUpRotationLabelPositions(Math.PI / 8.0)
-            );
-        } else {
-            domain.setCategoryLabelPositions(CategoryLabelPositions.STANDARD);
-        }
-
-        NumberFormat fmt = integerValues
-                ? new DecimalFormat("#,##0")
-                : new DecimalFormat("#,##0.000");
-
-        if (plot.getRangeAxis() instanceof NumberAxis) {
-            NumberAxis range = (NumberAxis) plot.getRangeAxis();
-            range.setLabelFont(axisFont);
-            range.setTickLabelFont(tickFont);
-
-            range.setNumberFormatOverride(fmt);
-            range.setAutoRangeIncludesZero(true);
-
-            if (integerValues) {
-                range.setStandardTickUnits(NumberAxis.createIntegerTickUnits());
-            }
-
-            range.setUpperMargin(0.15);
-            range.setLowerMargin(0.10);
-        }
-
-        if (plot.getRenderer() instanceof BarRenderer) {
-            BarRenderer r = (BarRenderer) plot.getRenderer();
-            r.setShadowVisible(false);
-            r.setBarPainter(new StandardBarPainter());
-            r.setDefaultItemLabelsVisible(true);
-            r.setDefaultItemLabelGenerator(new StandardCategoryItemLabelGenerator("{2}", fmt));
-            r.setDefaultItemLabelFont(new Font("SansSerif", Font.PLAIN, 11));
-        }
-
-        if (plot.getRenderer() instanceof LineAndShapeRenderer) {
-            LineAndShapeRenderer r = (LineAndShapeRenderer) plot.getRenderer();
-            r.setDefaultShapesVisible(true);
-            r.setDefaultItemLabelsVisible(true);
-            r.setDefaultItemLabelGenerator(new StandardCategoryItemLabelGenerator("{2}", fmt));
-            r.setDefaultStroke(new BasicStroke(2.0f));
-        }
+    int cols = (plot.getDataset() != null) ? plot.getDataset().getColumnCount() : 0;
+    if (cols > 4) {
+        domain.setCategoryLabelPositions(
+                CategoryLabelPositions.createUpRotationLabelPositions(Math.PI / 8.0)
+        );
+    } else {
+        domain.setCategoryLabelPositions(CategoryLabelPositions.STANDARD);
     }
+
+    // ==========================================================
+    // ✅ FIX FORMATO: niente ".000" -> usa #,##0.###
+    // ==========================================================
+    NumberFormat fmt;
+    if (integerValues) {
+        DecimalFormat df = new DecimalFormat("#,##0");
+        df.setGroupingUsed(true);
+        fmt = df;
+    } else {
+        // max 3 decimali, min 0 => niente zeri finali
+        DecimalFormat df = new DecimalFormat("#,##0.###");
+        df.setGroupingUsed(true);
+        df.setMinimumFractionDigits(0);
+        df.setMaximumFractionDigits(3);
+        fmt = df;
+    }
+
+    // --- asse Y
+    if (plot.getRangeAxis() instanceof NumberAxis) {
+        NumberAxis range = (NumberAxis) plot.getRangeAxis();
+        range.setLabelFont(axisFont);
+        range.setTickLabelFont(tickFont);
+
+        range.setNumberFormatOverride(fmt);
+        range.setAutoRangeIncludesZero(true);
+
+        if (integerValues) {
+            range.setStandardTickUnits(NumberAxis.createIntegerTickUnits());
+        }
+
+        range.setUpperMargin(0.15);
+        range.setLowerMargin(0.10);
+    }
+
+    // --- renderer: Bar chart
+    if (plot.getRenderer() instanceof BarRenderer) {
+        BarRenderer r = (BarRenderer) plot.getRenderer();
+        r.setShadowVisible(false);
+        r.setBarPainter(new StandardBarPainter());
+
+        r.setDefaultItemLabelsVisible(true);
+        r.setDefaultItemLabelGenerator(new StandardCategoryItemLabelGenerator("{2}", fmt));
+        r.setDefaultItemLabelFont(new Font("SansSerif", Font.PLAIN, 11));
+    }
+
+    // --- renderer: Line chart
+    if (plot.getRenderer() instanceof LineAndShapeRenderer) {
+        LineAndShapeRenderer r = (LineAndShapeRenderer) plot.getRenderer();
+
+        r.setDefaultShapesVisible(true);
+        r.setDefaultItemLabelsVisible(true);
+        r.setDefaultItemLabelGenerator(new StandardCategoryItemLabelGenerator("{2}", fmt));
+        r.setDefaultStroke(new BasicStroke(2.0f));
+    }
+}
+
+   private void applySeriesLabelFormatting(JFreeChart chart) {
+	    if (chart == null) return;
+	    if (chart.getPlot() == null) return;
+
+	    if (chart.getPlot() instanceof org.jfree.chart.plot.CategoryPlot) {
+	        org.jfree.chart.plot.CategoryPlot plot = (org.jfree.chart.plot.CategoryPlot) chart.getPlot();
+	        if (plot.getRenderer() == null) return;
+
+	        plot.getRenderer().setDefaultItemLabelsVisible(true);
+
+	        plot.getRenderer().setDefaultItemLabelGenerator(new org.jfree.chart.labels.CategoryItemLabelGenerator() {
+	            @Override
+	            public String generateLabel(org.jfree.data.category.CategoryDataset dataset, int row, int column) {
+	                if (dataset == null) return "";
+	                Comparable<?> rowKey = dataset.getRowKey(row);
+	                Number v = dataset.getValue(row, column);
+	                if (v == null) return "";
+
+	                String series = (rowKey == null) ? "" : rowKey.toString().toLowerCase();
+
+	                // Quantità -> intero (come nei dettagli)
+	                if (series.contains("quant") || series.contains("(kg)")) {
+	                    return DF_INT.format(v.doubleValue());
+	                }
+
+	                // Prezzi / CMP -> 3 decimali fissi (come nei dettagli: 1,640)
+	                if (series.contains("p medio") || series.contains("€/kg") || series.contains("cmp")) {
+	                    return DF_3.format(v.doubleValue());
+	                }
+
+	                // Tutto il resto (POS, fatturato, cogs, ecc.) -> intero
+	                return DF_INT.format(v.doubleValue());
+	            }
+
+	            @Override
+	            public String generateRowLabel(org.jfree.data.category.CategoryDataset dataset, int row) {
+	                return dataset.getRowKey(row).toString();
+	            }
+
+	            @Override
+	            public String generateColumnLabel(org.jfree.data.category.CategoryDataset dataset, int column) {
+	                return dataset.getColumnKey(column).toString();
+	            }
+	        });
+	    }
+	}
 
     // ===========================
     // CE Budget 2022 reading: SOLO colonna J
