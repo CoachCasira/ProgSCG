@@ -10,19 +10,18 @@ import org.jfree.chart.JFreeChart;
 
 public class ChartsPanel extends JPanel {
 
-    /** Tab per articolo (MP1, MP2, ...). */
-    private final JTabbedPane articleTabs = new JTabbedPane();
+    private final JTabbedPane tabs = new JTabbedPane();
 
-    /** Mantiene i pannelli per articolo. */
-    private final Map<String, ArticleTab> byArticle = new LinkedHashMap<>();
+    // Per ogni articoloKey manteniamo 2 tab: POS e VAR
+    private final Map<String, PairTabs> byArticle = new LinkedHashMap<>();
 
-    /** Ultimo articolo “attivo” (fallback per API vecchie). */
+    // fallback per API vecchie senza key
     private String lastActiveArticleKey = null;
 
     public ChartsPanel() {
         super(new BorderLayout());
-        articleTabs.setBorder(BorderFactory.createTitledBorder("Grafici"));
-        add(articleTabs, BorderLayout.CENTER);
+        tabs.setBorder(BorderFactory.createTitledBorder("Grafici"));
+        add(tabs, BorderLayout.CENTER);
     }
 
     // ============================================================
@@ -30,42 +29,57 @@ public class ChartsPanel extends JPanel {
     // ============================================================
 
     public void setPosChart(String articleKey, JFreeChart chart) {
-        final String key = normalizeKey(articleKey);
         SwingUtilities.invokeLater(() -> {
-            ArticleTab tab = getOrCreateTab(key);
-            tab.posChartPanel.setChart(chart);
-            tab.posChartPanel.revalidate();
-            tab.posChartPanel.repaint();
+            PairTabs p = getOrCreatePair(articleKey);
+            p.posPanel.setChart(chart);
+            p.posPanel.revalidate();
+            p.posPanel.repaint();
+            lastActiveArticleKey = normalizeKey(articleKey);
         });
     }
 
     public void setCompChart(String articleKey, JFreeChart chart) {
-        final String key = normalizeKey(articleKey);
         SwingUtilities.invokeLater(() -> {
-            ArticleTab tab = getOrCreateTab(key);
-            tab.compChartPanel.setChart(chart);
-            tab.compChartPanel.revalidate();
-            tab.compChartPanel.repaint();
+            PairTabs p = getOrCreatePair(articleKey);
+            p.varPanel.setChart(chart);
+            p.varPanel.revalidate();
+            p.varPanel.repaint();
+            lastActiveArticleKey = normalizeKey(articleKey);
         });
     }
 
+    /**
+     * Seleziona il tab POS (quello “principale”) dell’articolo.
+     * Se vuoi selezionare direttamente VAR, usa setActiveVariationTab(articleKey).
+     */
     public void setActiveArticleTab(String articleKey) {
-        final String key = normalizeKey(articleKey);
         SwingUtilities.invokeLater(() -> {
-            ArticleTab tab = getOrCreateTab(key);
-            int idx = articleTabs.indexOfComponent(tab.root);
-            if (idx >= 0) articleTabs.setSelectedIndex(idx);
-            lastActiveArticleKey = key;
+            PairTabs p = getOrCreatePair(articleKey);
+            int idx = tabs.indexOfComponent(p.posRoot);
+            if (idx >= 0) tabs.setSelectedIndex(idx);
+            lastActiveArticleKey = normalizeKey(articleKey);
+        });
+    }
+
+    public void setActiveVariationTab(String articleKey) {
+        SwingUtilities.invokeLater(() -> {
+            PairTabs p = getOrCreatePair(articleKey);
+            int idx = tabs.indexOfComponent(p.varRoot);
+            if (idx >= 0) tabs.setSelectedIndex(idx);
+            lastActiveArticleKey = normalizeKey(articleKey);
         });
     }
 
     // ============================================================
-    // API "vecchia" (compatibilità)
+    // API "vecchia" (compatibilità) usata dal MainController
     // ============================================================
 
     public void addOrReplaceArticleCharts(String labelTab, String subtitle, JFreeChart posChart, JFreeChart compChart) {
+        // Crea/aggiorna entrambe le schede
         setPosChart(labelTab, posChart);
         setCompChart(labelTab, compChart);
+
+        // Rimani sul tab POS (come comportamento “naturale”)
         setActiveArticleTab(labelTab);
     }
 
@@ -73,26 +87,27 @@ public class ChartsPanel extends JPanel {
         clearAll();
     }
 
+    // versioni senza key: applico all’ultima attiva / selezionata (POS di default)
     public void setPosChart(JFreeChart chart) {
         SwingUtilities.invokeLater(() -> {
-            ArticleTab tab = getOrCreateActiveTab();
-            tab.posChartPanel.setChart(chart);
-            tab.posChartPanel.revalidate();
-            tab.posChartPanel.repaint();
+            PairTabs p = getOrCreateActivePair();
+            p.posPanel.setChart(chart);
+            p.posPanel.revalidate();
+            p.posPanel.repaint();
         });
     }
 
     public void setCompChart(JFreeChart chart) {
         SwingUtilities.invokeLater(() -> {
-            ArticleTab tab = getOrCreateActiveTab();
-            tab.compChartPanel.setChart(chart);
-            tab.compChartPanel.revalidate();
-            tab.compChartPanel.repaint();
+            PairTabs p = getOrCreateActivePair();
+            p.varPanel.setChart(chart);
+            p.varPanel.revalidate();
+            p.varPanel.repaint();
         });
     }
 
     // ============================================================
-    // CE charts: NO-OP
+    // CE charts: NON più mostrati qui. NO-OP per compatibilità.
     // ============================================================
 
     public void setCeBaseChart(JFreeChart chart) { /* NO-OP */ }
@@ -106,115 +121,106 @@ public class ChartsPanel extends JPanel {
     public void clearAll() {
         SwingUtilities.invokeLater(() -> {
             byArticle.clear();
-            articleTabs.removeAll();
+            tabs.removeAll();
             lastActiveArticleKey = null;
             revalidate();
             repaint();
         });
     }
 
-    private ArticleTab getOrCreateActiveTab() {
-        int sel = articleTabs.getSelectedIndex();
+    private PairTabs getOrCreateActivePair() {
+        // 1) tab selezionata -> capisco a quale articolo appartiene
+        int sel = tabs.getSelectedIndex();
         if (sel >= 0) {
-            Component comp = articleTabs.getComponentAt(sel);
+            Component comp = tabs.getComponentAt(sel);
             String key = findKeyByComponent(comp);
             if (key != null) {
                 lastActiveArticleKey = key;
                 return byArticle.get(key);
             }
         }
+
+        // 2) ultima attiva
         if (lastActiveArticleKey != null && byArticle.containsKey(lastActiveArticleKey)) {
             return byArticle.get(lastActiveArticleKey);
         }
-        return getOrCreateTab("Risultati");
+
+        // 3) fallback
+        return getOrCreatePair("Risultati");
     }
 
     private String findKeyByComponent(Component comp) {
-        for (Map.Entry<String, ArticleTab> e : byArticle.entrySet()) {
-            if (e.getValue().root == comp) return e.getKey();
+        for (Map.Entry<String, PairTabs> e : byArticle.entrySet()) {
+            PairTabs p = e.getValue();
+            if (p.posRoot == comp || p.varRoot == comp) return e.getKey();
         }
         return null;
     }
 
-    private ArticleTab getOrCreateTab(String articleKey) {
+    private PairTabs getOrCreatePair(String articleKey) {
         String key = normalizeKey(articleKey);
 
-        ArticleTab existing = byArticle.get(key);
-        if (existing != null) {
-            lastActiveArticleKey = key;
-            return existing;
-        }
+        PairTabs existing = byArticle.get(key);
+        if (existing != null) return existing;
 
-        ArticleTab tab = new ArticleTab();
-        tab.root = buildTabUI(tab);
+        PairTabs p = new PairTabs();
+        p.articleKey = key;
 
-        byArticle.put(key, tab);
-        articleTabs.addTab(key, tab.root);
+        // --- POS tab
+        p.posPanel = new ChartPanel(null, false);
+        setupChartPanel(p.posPanel);
+
+        JPanel posWrap = wrapWithTitle("POS", p.posPanel);
+        p.posRoot = buildScrollableRoot(posWrap);
+
+        // --- VAR tab
+        p.varPanel = new ChartPanel(null, false);
+        setupChartPanel(p.varPanel);
+
+        JPanel varWrap = wrapWithTitle("Variazione (Quantità / Prezzo)", p.varPanel);
+        p.varRoot = buildScrollableRoot(varWrap);
+
+        // label dei tab
+        String labelPOS = key;                 // es: "MP||MP1"
+        String labelVAR = key + " – VAR";      // es: "MP||MP1 – VAR"
+        // se preferisci più esplicito:
+        // String labelVAR = key + " – Q/P";
+
+        byArticle.put(key, p);
+
+        tabs.addTab(labelPOS, p.posRoot);
+        tabs.addTab(labelVAR, p.varRoot);
 
         lastActiveArticleKey = key;
-        return tab;
+
+        return p;
     }
 
-    private String normalizeKey(String k) {
-        if (k == null) return "Risultati";
-        String t = k.trim();
-        return t.isEmpty() ? "Risultati" : t;
+    private String normalizeKey(String articleKey) {
+        if (articleKey == null || articleKey.trim().isEmpty()) return "Risultati";
+        return articleKey.trim();
     }
 
-    /**
-     * Tab con 2 grafici verticali.
-     * Ogni grafico: JScrollPane con H+V AS_NEEDED.
-     */
-    private JComponent buildTabUI(ArticleTab tab) {
-        JPanel inner = new JPanel();
-        inner.setLayout(new BoxLayout(inner, BoxLayout.Y_AXIS));
-        inner.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-
-        tab.posChartPanel = new ScrollableChartPanel(null);
-        tab.compChartPanel = new ScrollableChartPanel(null);
-
-        setupChartPanel(tab.posChartPanel);
-        setupChartPanel(tab.compChartPanel);
-
-        inner.add(wrapChartWithTitleAndScroll("POS", tab.posChartPanel));
-        inner.add(Box.createVerticalStrut(10));
-        inner.add(wrapChartWithTitleAndScroll("Variazione (Quantità / Prezzo)", tab.compChartPanel));
-
+    private JComponent buildScrollableRoot(JComponent inner) {
         JScrollPane sp = new JScrollPane(inner,
-                ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,
-                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+                ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
         sp.setBorder(null);
         sp.getVerticalScrollBar().setUnitIncrement(16);
-
+        sp.getHorizontalScrollBar().setUnitIncrement(16);
         return sp;
     }
 
-    /**
-     * Wrapper: titolo + scroll X/Y sul grafico.
-     */
-    private JComponent wrapChartWithTitleAndScroll(String title, ChartPanel chartPanel) {
-        JPanel outer = new JPanel(new BorderLayout());
-        outer.setBorder(BorderFactory.createTitledBorder(title));
-
-        JScrollPane scroll = new JScrollPane(chartPanel,
-                ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
-                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-
-        // scorrimento più fluido
-        scroll.getHorizontalScrollBar().setUnitIncrement(20);
-        scroll.getVerticalScrollBar().setUnitIncrement(16);
-
-        // padding interno pulito
-        scroll.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
-
-        outer.add(scroll, BorderLayout.CENTER);
-        return outer;
+    private JPanel wrapWithTitle(String title, JComponent content) {
+        JPanel p = new JPanel(new BorderLayout());
+        p.setBorder(BorderFactory.createTitledBorder(title));
+        p.add(content, BorderLayout.CENTER);
+        return p;
     }
 
     private void setupChartPanel(ChartPanel cp) {
-        // ✅ più grande della viewport -> scrollbar sempre disponibili su laptop
-        cp.setPreferredSize(new Dimension(1600, 520));
-        cp.setMinimumSize(new Dimension(1200, 420));
+        // più grande del viewport => compaiono le scroll se lo schermo è piccolo
+        cp.setPreferredSize(new Dimension(1400, 650));
 
         // niente zoom / menu
         cp.setMouseWheelEnabled(false);
@@ -223,51 +229,23 @@ public class ChartsPanel extends JPanel {
         cp.setRangeZoomable(false);
         cp.setPopupMenu(null);
 
+        // look pulito
         cp.setOpaque(true);
         cp.setBackground(Color.WHITE);
+        cp.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
 
+        // evita limiti strani in resize
         cp.setMinimumDrawWidth(0);
         cp.setMinimumDrawHeight(0);
     }
 
-    /**
-     * 🔥 Fix vero: ChartPanel “scrollabile” che NON si adatta alla viewport.
-     * Se tracka la viewport -> le scrollbar non compaiono mai.
-     */
-    private static class ScrollableChartPanel extends ChartPanel implements Scrollable {
-        public ScrollableChartPanel(JFreeChart chart) {
-            super(chart, false);
-        }
+    private static class PairTabs {
+        String articleKey;
 
-        @Override
-        public Dimension getPreferredScrollableViewportSize() {
-            return new Dimension(900, 320);
-        }
+        JComponent posRoot;
+        JComponent varRoot;
 
-        @Override
-        public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
-            return (orientation == SwingConstants.HORIZONTAL) ? 20 : 16;
-        }
-
-        @Override
-        public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
-            return (orientation == SwingConstants.HORIZONTAL) ? 200 : 120;
-        }
-
-        @Override
-        public boolean getScrollableTracksViewportWidth() {
-            return false; // ✅ fondamentale
-        }
-
-        @Override
-        public boolean getScrollableTracksViewportHeight() {
-            return false; // ✅ fondamentale
-        }
-    }
-
-    private static class ArticleTab {
-        JComponent root;
-        ChartPanel posChartPanel;
-        ChartPanel compChartPanel;
+        ChartPanel posPanel;
+        ChartPanel varPanel;
     }
 }
