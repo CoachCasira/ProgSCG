@@ -21,7 +21,6 @@ public class ChartsPanel extends JPanel {
 
     public ChartsPanel() {
         super(new BorderLayout());
-
         articleTabs.setBorder(BorderFactory.createTitledBorder("Grafici"));
         add(articleTabs, BorderLayout.CENTER);
     }
@@ -31,8 +30,9 @@ public class ChartsPanel extends JPanel {
     // ============================================================
 
     public void setPosChart(String articleKey, JFreeChart chart) {
+        final String key = normalizeKey(articleKey);
         SwingUtilities.invokeLater(() -> {
-            ArticleTab tab = getOrCreateTab(articleKey);
+            ArticleTab tab = getOrCreateTab(key);
             tab.posChartPanel.setChart(chart);
             tab.posChartPanel.revalidate();
             tab.posChartPanel.repaint();
@@ -40,8 +40,9 @@ public class ChartsPanel extends JPanel {
     }
 
     public void setCompChart(String articleKey, JFreeChart chart) {
+        final String key = normalizeKey(articleKey);
         SwingUtilities.invokeLater(() -> {
-            ArticleTab tab = getOrCreateTab(articleKey);
+            ArticleTab tab = getOrCreateTab(key);
             tab.compChartPanel.setChart(chart);
             tab.compChartPanel.revalidate();
             tab.compChartPanel.repaint();
@@ -49,39 +50,29 @@ public class ChartsPanel extends JPanel {
     }
 
     public void setActiveArticleTab(String articleKey) {
+        final String key = normalizeKey(articleKey);
         SwingUtilities.invokeLater(() -> {
-            ArticleTab tab = getOrCreateTab(articleKey);
+            ArticleTab tab = getOrCreateTab(key);
             int idx = articleTabs.indexOfComponent(tab.root);
             if (idx >= 0) articleTabs.setSelectedIndex(idx);
-            lastActiveArticleKey = articleKey;
+            lastActiveArticleKey = key;
         });
     }
 
     // ============================================================
-    // API "vecchia" (compatibilità) usata dal tuo MainController
+    // API "vecchia" (compatibilità)
     // ============================================================
 
-    /**
-     * Vecchia API: aggiunge/aggiorna la tab articolo e setta i due grafici.
-     * - labelTab: spesso è MP1, MP2, ecc. (noi lo usiamo come key)
-     * - subtitle: ignorato (titoli li metti già nei chart)
-     */
     public void addOrReplaceArticleCharts(String labelTab, String subtitle, JFreeChart posChart, JFreeChart compChart) {
-        // subtitle non serve più
         setPosChart(labelTab, posChart);
         setCompChart(labelTab, compChart);
         setActiveArticleTab(labelTab);
     }
 
-    /** Vecchia API: pulisce tutte le tab articolo. */
     public void clearArticleCharts() {
         clearAll();
     }
 
-    /**
-     * Vecchia API: setPosChart “globale” (senza key articolo).
-     * La applichiamo alla tab selezionata / ultima attiva.
-     */
     public void setPosChart(JFreeChart chart) {
         SwingUtilities.invokeLater(() -> {
             ArticleTab tab = getOrCreateActiveTab();
@@ -91,7 +82,6 @@ public class ChartsPanel extends JPanel {
         });
     }
 
-    /** Vecchia API: setCompChart “globale” (senza key articolo). */
     public void setCompChart(JFreeChart chart) {
         SwingUtilities.invokeLater(() -> {
             ArticleTab tab = getOrCreateActiveTab();
@@ -102,27 +92,17 @@ public class ChartsPanel extends JPanel {
     }
 
     // ============================================================
-    // CE charts: il MainController li chiama, ma tu NON vuoi più la tab CE qui.
-    // Quindi li lasciamo come NO-OP per compilare senza cambiare logica.
+    // CE charts: NO-OP (non vuoi la tab CE qui)
     // ============================================================
 
-    public void setCeBaseChart(JFreeChart chart) {
-        // NO-OP: CE Budget lo apri con pulsante dedicato, non lo mostriamo nei "Grafici"
-    }
-
-    public void setCeVarChart(JFreeChart chart) {
-        // NO-OP
-    }
-
-    public void setCeDeltaChart(JFreeChart chart) {
-        // NO-OP
-    }
+    public void setCeBaseChart(JFreeChart chart) { /* NO-OP */ }
+    public void setCeVarChart(JFreeChart chart)  { /* NO-OP */ }
+    public void setCeDeltaChart(JFreeChart chart){ /* NO-OP */ }
 
     // ============================================================
     // Utility
     // ============================================================
 
-    /** Rimuove tutte le tab (articoli). */
     public void clearAll() {
         SwingUtilities.invokeLater(() -> {
             byArticle.clear();
@@ -134,7 +114,6 @@ public class ChartsPanel extends JPanel {
     }
 
     private ArticleTab getOrCreateActiveTab() {
-        // 1) tab selezionata
         int sel = articleTabs.getSelectedIndex();
         if (sel >= 0) {
             Component comp = articleTabs.getComponentAt(sel);
@@ -144,13 +123,9 @@ public class ChartsPanel extends JPanel {
                 return byArticle.get(key);
             }
         }
-
-        // 2) ultima attiva
         if (lastActiveArticleKey != null && byArticle.containsKey(lastActiveArticleKey)) {
             return byArticle.get(lastActiveArticleKey);
         }
-
-        // 3) fallback
         return getOrCreateTab("Risultati");
     }
 
@@ -162,29 +137,38 @@ public class ChartsPanel extends JPanel {
     }
 
     private ArticleTab getOrCreateTab(String articleKey) {
-        if (articleKey == null || articleKey.trim().isEmpty()) articleKey = "Risultati";
-        articleKey = articleKey.trim();
+        String key = normalizeKey(articleKey);
 
-        ArticleTab existing = byArticle.get(articleKey);
+        ArticleTab existing = byArticle.get(key);
         if (existing != null) {
-            lastActiveArticleKey = articleKey;
+            lastActiveArticleKey = key;
             return existing;
         }
 
         ArticleTab tab = new ArticleTab();
         tab.root = buildTabUI(tab);
 
-        byArticle.put(articleKey, tab);
-        articleTabs.addTab(articleKey, tab.root);
+        byArticle.put(key, tab);
+        articleTabs.addTab(key, tab.root);
 
-        lastActiveArticleKey = articleKey;
+        lastActiveArticleKey = key;
         return tab;
     }
 
+    private String normalizeKey(String k) {
+        if (k == null) return "Risultati";
+        String t = k.trim();
+        return t.isEmpty() ? "Risultati" : t;
+    }
+
+    /**
+     * UI tab: due grafici in verticale.
+     * Ogni grafico è dentro uno JScrollPane con H-scroll AS_NEEDED
+     * così su schermi piccoli puoi scorrere sx↔dx.
+     */
     private JComponent buildTabUI(ArticleTab tab) {
-        // contenuto “scrollabile”: due grafici in verticale
         JPanel inner = new JPanel();
-        inner.setLayout(new GridLayout(2, 1, 0, 10));
+        inner.setLayout(new BoxLayout(inner, BoxLayout.Y_AXIS));
         inner.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
         tab.posChartPanel = new ChartPanel(null, false);
@@ -193,11 +177,9 @@ public class ChartsPanel extends JPanel {
         setupChartPanel(tab.posChartPanel);
         setupChartPanel(tab.compChartPanel);
 
-        JPanel posWrap = wrapWithTitle("POS", tab.posChartPanel);
-        JPanel compWrap = wrapWithTitle("Variazione (Quantità / Prezzo)", tab.compChartPanel);
-
-        inner.add(posWrap);
-        inner.add(compWrap);
+        inner.add(wrapChartWithTitleAndHScroll("POS", tab.posChartPanel));
+        inner.add(Box.createVerticalStrut(10));
+        inner.add(wrapChartWithTitleAndHScroll("Variazione (Quantità / Prezzo)", tab.compChartPanel));
 
         JScrollPane sp = new JScrollPane(inner,
                 ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,
@@ -208,29 +190,43 @@ public class ChartsPanel extends JPanel {
         return sp;
     }
 
-    private JPanel wrapWithTitle(String title, JComponent content) {
-        JPanel p = new JPanel(new BorderLayout());
-        p.setBorder(BorderFactory.createTitledBorder(title));
-        p.add(content, BorderLayout.CENTER);
-        return p;
+    /**
+     * Wrapper con titolo + scroll ORIZZONTALE sul grafico.
+     * Nota: per far comparire la scrollbar, il ChartPanel deve avere preferredWidth
+     * maggiore della viewport (lo facciamo in setupChartPanel).
+     */
+    private JComponent wrapChartWithTitleAndHScroll(String title, ChartPanel chartPanel) {
+        JPanel outer = new JPanel(new BorderLayout());
+        outer.setBorder(BorderFactory.createTitledBorder(title));
+
+        JScrollPane hScroll = new JScrollPane(chartPanel,
+                ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER,
+                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+
+        // scorrimento più “fluido”
+        hScroll.getHorizontalScrollBar().setUnitIncrement(20);
+
+        // evita bordo doppio
+        hScroll.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+
+        outer.add(hScroll, BorderLayout.CENTER);
+        return outer;
     }
 
     private void setupChartPanel(ChartPanel cp) {
-        cp.setPreferredSize(new Dimension(1000, 320));
+        // ✅ width più grande della viewport -> appare scroll orizzontale su laptop
+        cp.setPreferredSize(new Dimension(1400, 320));
 
-        // niente zoom
+        // niente zoom / menu
         cp.setMouseWheelEnabled(false);
         cp.setMouseZoomable(false);
         cp.setDomainZoomable(false);
         cp.setRangeZoomable(false);
-
-        // niente menu popup
         cp.setPopupMenu(null);
 
         // look pulito
         cp.setOpaque(true);
         cp.setBackground(Color.WHITE);
-        cp.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
 
         // evita limiti strani in resize
         cp.setMinimumDrawWidth(0);

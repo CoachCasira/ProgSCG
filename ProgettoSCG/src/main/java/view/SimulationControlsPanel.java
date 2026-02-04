@@ -46,13 +46,14 @@ public class SimulationControlsPanel extends JPanel {
                 TitledBorder.TOP
         ));
 
-        // ===== TOP: tabella multi-articolo =====
-        JPanel top = new JPanel(new BorderLayout(8, 8));
-        top.setBorder(BorderFactory.createEmptyBorder(8, 10, 0, 10));
-
         JLabel hint = new JLabel("Seleziona uno o più articoli e imposta Leva/Percentuale/Compensa per ciascuno.");
         hint.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        top.add(hint, BorderLayout.NORTH);
+        hint.setBorder(BorderFactory.createEmptyBorder(8, 10, 0, 10));
+        add(hint, BorderLayout.NORTH);
+
+        // ====== TOP: tabella + pulsanti ======
+        JPanel tableBlock = new JPanel(new BorderLayout(8, 8));
+        tableBlock.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 10));
 
         tableModel = new ArticlesTableModel();
         table = new JTable(tableModel);
@@ -72,12 +73,12 @@ public class SimulationControlsPanel extends JPanel {
 
         JScrollPane tableScroll = new JScrollPane(table,
                 ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,
-                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         tableScroll.setBorder(BorderFactory.createTitledBorder("Articoli"));
 
-        top.add(tableScroll, BorderLayout.CENTER);
+        // ✅ su laptop vogliamo che la tabella NON mangi tutto lo spazio
+        tableScroll.setPreferredSize(new Dimension(520, 260));
 
-        // pulsanti rapidi + simula
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         btnSelectAll = new JButton("Seleziona tutti");
         btnSelectNone = new JButton("Deseleziona tutti");
@@ -87,14 +88,13 @@ public class SimulationControlsPanel extends JPanel {
         actions.add(btnSelectNone);
         actions.add(btnSimulate);
 
-        top.add(actions, BorderLayout.SOUTH);
-
-        add(top, BorderLayout.NORTH);
+        tableBlock.add(tableScroll, BorderLayout.CENTER);
+        tableBlock.add(actions, BorderLayout.SOUTH);
 
         btnSelectAll.addActionListener(e -> tableModel.selectAll(true));
         btnSelectNone.addActionListener(e -> tableModel.selectAll(false));
 
-        // ===== CENTER: dettagli (HTML) =====
+        // ====== BOTTOM: dettagli ======
         JPanel detailsOuter = new JPanel(new BorderLayout());
         detailsOuter.setBorder(BorderFactory.createTitledBorder("Dettagli"));
 
@@ -105,31 +105,40 @@ public class SimulationControlsPanel extends JPanel {
         detailsPane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
         detailsPane.setFont(new Font("SansSerif", Font.PLAIN, 12));
 
-        // Dimensioni “ampie”
-        detailsPane.setPreferredSize(new Dimension(560, 520));
+        // ✅ dettagli più grandi su laptop
+        detailsPane.setPreferredSize(new Dimension(560, 420));
         detailsPane.setMinimumSize(new Dimension(560, 260));
 
-        JScrollPane sp = new JScrollPane(detailsPane,
+        JScrollPane detailsScroll = new JScrollPane(detailsPane,
                 ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,
                 ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-        sp.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
-        sp.getVerticalScrollBar().setUnitIncrement(16);
+        detailsScroll.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+        detailsScroll.getVerticalScrollBar().setUnitIncrement(16);
 
-        detailsOuter.add(sp, BorderLayout.CENTER);
-        add(detailsOuter, BorderLayout.CENTER);
+        detailsOuter.add(detailsScroll, BorderLayout.CENTER);
+
+        // ====== Split verticale: sopra tabella, sotto dettagli ======
+        JSplitPane vSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, tableBlock, detailsOuter);
+        vSplit.setResizeWeight(0.45);      // ✅ più spazio ai dettagli
+        vSplit.setDividerSize(10);
+        vSplit.setContinuousLayout(true);
+        vSplit.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
+
+        // Divider iniziale (buono per laptop)
+        vSplit.setDividerLocation(320);
+
+        add(vSplit, BorderLayout.CENTER);
     }
 
     // ===== API usata dal Controller =====
 
-    public JButton getBtnSimulate() {
-        return btnSimulate;
-    }
+    public JButton getBtnSimulate() { return btnSimulate; }
 
     public void setArticles(List<ArticleRow> articles) {
         tableModel.setArticles(articles);
     }
 
-    /** Compat: ritorna il primo selezionato (se ti serve in altri punti). */
+    /** Compat: ritorna il primo selezionato. */
     public ArticleRow getSelectedArticle() {
         List<SimRequest> req = getSimulationRequests();
         return req.isEmpty() ? null : req.get(0).article;
@@ -140,31 +149,19 @@ public class SimulationControlsPanel extends JPanel {
         return tableModel.getSelectedRequests();
     }
 
- // ======================================================
- // COMPATIBILITÀ con vecchi controller (PremioCompController)
- // ======================================================
+    /** Compat: ritorna la "mode" del primo selezionato (o QUANTITY). */
+    public SimulationMode getMode() {
+        List<SimRequest> req = getSimulationRequests();
+        return req.isEmpty() ? SimulationMode.QUANTITY : req.get(0).mode;
+    }
 
- /** Ritorna la percentuale della prima riga selezionata. */
- public double getPercent() {
-     List<SimRequest> req = getSimulationRequests();
-     if (req == null || req.isEmpty()) {
-         throw new IllegalArgumentException("Seleziona almeno un articolo (colonna 'Sel').");
-     }
-     return req.get(0).percent;
- }
+    /** Compat: ritorna la percent del primo selezionato (o 0). */
+    public double getPercent() {
+        List<SimRequest> req = getSimulationRequests();
+        return req.isEmpty() ? 0.0 : req.get(0).percent;
+    }
 
- /** Ritorna la leva (QUANTITY/PRICE) della prima riga selezionata. */
- public SimulationMode getMode() {
-     List<SimRequest> req = getSimulationRequests();
-     if (req == null || req.isEmpty()) {
-         return SimulationMode.QUANTITY; // default sensato
-     }
-     return req.get(0).mode;
- }
-
-    
-    
-    /** Compat: se ti serve ancora una “compensa globale” altrove, qui vale “true se almeno 1 spuntato” */
+    /** true se almeno una riga selezionata ha compensazione */
     public boolean isCompensateSelected() {
         for (SimRequest r : getSimulationRequests()) {
             if (r.compensate) return true;
@@ -182,9 +179,7 @@ public class SimulationControlsPanel extends JPanel {
 
     private static class ArticlesTableModel extends AbstractTableModel {
 
-        private final String[] cols = new String[] {
-                "Sel", "Cat", "Articolo", "Leva", "%", "Compensa"
-        };
+        private final String[] cols = {"Sel", "Cat", "Articolo", "Leva", "%", "Compensa"};
 
         private static class RowState {
             boolean selected = false;
@@ -202,10 +197,6 @@ public class SimulationControlsPanel extends JPanel {
                 for (ArticleRow a : articles) {
                     RowState r = new RowState();
                     r.article = a;
-                    r.selected = false;
-                    r.mode = SimulationMode.QUANTITY;
-                    r.percent = 0.0;
-                    r.compensate = false;
                     rows.add(r);
                 }
             }
@@ -214,7 +205,7 @@ public class SimulationControlsPanel extends JPanel {
 
         public void selectAll(boolean v) {
             for (RowState r : rows) r.selected = v;
-            if (!rows.isEmpty()) fireTableRowsUpdated(0, rows.size() - 1);
+            fireTableRowsUpdated(0, Math.max(0, rows.size() - 1));
         }
 
         public List<SimRequest> getSelectedRequests() {
@@ -264,24 +255,23 @@ public class SimulationControlsPanel extends JPanel {
             try {
                 switch (columnIndex) {
                     case 0:
-                        r.selected = (aValue instanceof Boolean) && ((Boolean) aValue);
+                        r.selected = (aValue instanceof Boolean) ? (Boolean) aValue : false;
                         break;
+
                     case 3: {
                         String s = String.valueOf(aValue).toUpperCase().trim();
                         r.mode = s.contains("PREZZ") ? SimulationMode.PRICE : SimulationMode.QUANTITY;
                         break;
                     }
+
                     case 4: {
-                        if (aValue instanceof Double) {
-                            r.percent = ((Double) aValue);
-                        } else {
-                            String s = String.valueOf(aValue).trim().replace(",", ".");
-                            r.percent = Double.parseDouble(s);
-                        }
+                        if (aValue instanceof Double) r.percent = (Double) aValue;
+                        else r.percent = Double.parseDouble(String.valueOf(aValue).trim().replace(",", "."));
                         break;
                     }
+
                     case 5:
-                        r.compensate = (aValue instanceof Boolean) && ((Boolean) aValue);
+                        r.compensate = (aValue instanceof Boolean) ? (Boolean) aValue : false;
                         break;
                 }
             } catch (Exception ignore) {
