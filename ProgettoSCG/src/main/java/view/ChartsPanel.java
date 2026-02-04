@@ -20,7 +20,8 @@ public class ChartsPanel extends JPanel {
     private String lastActiveKey = null;
 
     // --- tuning “zoom”/scroll: più piccoli = meno scroll su schermi normali
-    private static final Dimension CHART_PREF = new Dimension(920, 520);
+    private static final Dimension CHART_PREF = new Dimension(760, 420);
+
 
     public ChartsPanel() {
         super(new BorderLayout());
